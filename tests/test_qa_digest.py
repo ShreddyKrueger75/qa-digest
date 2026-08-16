@@ -9,6 +9,8 @@ Run:  python3 -m pytest tests/
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
 import sys
 
 import pytest
@@ -129,8 +131,88 @@ def test_select_keyframes_respects_max_frames(tmp_path):
     assert kept[0]["ts"] == 0.0 and kept[-1]["ts"] == 11 / 2.0  # ends survive the cap
 
 
+def test_select_keyframes_cap_one_and_invalid_inputs(tmp_path):
+    files = []
+    for i, brightness in enumerate([10, 200, 40]):
+        p = str(tmp_path / f"d{i:05d}.jpg")
+        _write_frame(p, brightness)
+        files.append(p)
+
+    kept = dm.select_keyframes(files, fps=2.0, diff_threshold=5.0, max_frames=1)
+    assert len(kept) == 1
+    assert kept[0]["ts"] == 0.0
+
+    with pytest.raises(ValueError, match="max_frames"):
+        dm.select_keyframes(files, fps=2.0, diff_threshold=5.0, max_frames=0)
+    with pytest.raises(ValueError, match="fps"):
+        dm.select_keyframes(files, fps=0.0, diff_threshold=5.0, max_frames=3)
+
+
+def test_clean_generated_output_preserves_unrelated_files(tmp_path):
+    frames = tmp_path / "frames"
+    frames.mkdir()
+    (frames / "0000_00h00m00s.jpg").write_bytes(b"old")
+    (frames / "cover.jpg").write_bytes(b"keep")
+    (frames / "notes.txt").write_text("keep")
+    for name in ("manifest.json", "report.html", "digest.md"):
+        (tmp_path / name).write_text("stale")
+    (tmp_path / "user-notes.md").write_text("keep")
+
+    dm.clean_generated_output(str(tmp_path))
+
+    assert not (frames / "0000_00h00m00s.jpg").exists()
+    assert (frames / "cover.jpg").exists()
+    assert (frames / "notes.txt").exists()
+    assert not (tmp_path / "manifest.json").exists()
+    assert not (tmp_path / "report.html").exists()
+    assert (tmp_path / "user-notes.md").exists()
+
+
 def test_select_keyframes_empty():
     assert dm.select_keyframes([], 2.0, 1.5, 60) == []
+
+
+def test_scaled_dimensions_match_even_ffmpeg_output():
+    assert dm._scaled_dimensions(1920, 1080, 640) == (640, 360)
+    assert dm._scaled_dimensions(640, 359, 320) == (320, 180)
+
+
+def test_read_raw_frame_handles_short_reads():
+    class ShortReader:
+        def __init__(self):
+            self.parts = [b"ab", b"c", b"def"]
+
+        def read(self, _size):
+            return self.parts.pop(0) if self.parts else b""
+
+    assert dm._read_raw_frame(ShortReader(), 6) == b"abcdef"
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_stream_keyframes_encodes_only_changed_states(tmp_path):
+    video = tmp_path / "states.mp4"
+    result = subprocess.run([
+        "ffmpeg", "-v", "error",
+        "-f", "lavfi", "-i", "color=c=black:s=64x32:r=2:d=1",
+        "-f", "lavfi", "-i", "color=c=white:s=64x32:r=2:d=1",
+        "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p",
+        "-c:v", "mpeg4", "-y", str(video),
+    ], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+    kept = dm.stream_keyframes(
+        str(video), fps=2.0, width=32, source_width=64, source_height=32,
+        diff_threshold=20.0, max_frames=10, tmpdir=str(tmp_path),
+    )
+    assert [item["ts"] for item in kept] == [0.0, 1.0, 1.5]
+    assert Image.open(kept[0]["src"]).size == (32, 16)
+    assert Image.open(kept[1]["src"]).size == (32, 16)
+
+    first_only = dm.stream_keyframes(
+        str(video), fps=2.0, width=32, source_width=64, source_height=32,
+        diff_threshold=20.0, max_frames=1, tmpdir=str(tmp_path),
+    )
+    assert [item["ts"] for item in first_only] == [0.0]
 
 
 # --- click detection -----------------------------------------------------------

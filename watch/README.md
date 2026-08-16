@@ -60,7 +60,7 @@ All settings live in `~/.qa-digest-watch.json`. Nothing is hardcoded —
 ### Digest options
 
 Mirror the `qa_digest.py` flags: `mode`, `model`, `max_frames`,
-`no_report`, `no_transcribe`, `no_frames`, `language`. Anything not exposed
+`no_report`, `no_transcribe`, `no_frames`, `clean_output`, `language`. Anything not exposed
 goes in `extra_args` as a list, e.g. `["--frame-width", "800"]`.
 
 
@@ -73,6 +73,7 @@ iPad without editing config.
 | Key | Default | Notes |
 | --- | --- | --- |
 | `output_dir` | `null` | `null` puts `<video>.digest` next to the clip. |
+| `clean_output` | `true` | Replaces prior qa-digest artifacts when a clip is reprocessed. |
 | `on_success` | `"leave"` | `leave`, `move` (needs `archive_dir`), or `trash`. |
 | `reprocess_on_change` | `true` | Re-digest if a clip is replaced with a new take. |
 

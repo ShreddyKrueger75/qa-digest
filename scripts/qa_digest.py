@@ -60,6 +60,36 @@ def eprint(*a):
     print(*a, file=sys.stderr)
 
 
+def positive_int(value):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("expected a positive integer")
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
+
+def positive_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("expected a positive number")
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return number
+
+
+def nonnegative_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError("expected a non-negative number")
+    if number < 0:
+        raise argparse.ArgumentTypeError("must not be negative")
+    return number
+
+
 def hms(seconds: float, compact: bool = False) -> str:
     seconds = max(0.0, float(seconds))
     h = int(seconds // 3600)
@@ -299,6 +329,10 @@ def select_keyframes(files, fps: float, diff_threshold: float, max_frames: int):
     """Keep frames that changed from the last kept frame; annotate each with the
     pointer (where the change was). Returns [{src, ts, score, ptr}]."""
     import numpy as np
+    if fps <= 0:
+        raise ValueError("fps must be greater than zero")
+    if max_frames <= 0:
+        raise ValueError("max_frames must be greater than zero")
     if not files:
         return []
     # Only three frames are ever needed at once (current, previous, last-kept);
@@ -325,7 +359,148 @@ def select_keyframes(files, fps: float, diff_threshold: float, max_frames: int):
         kept.append({"src": files[end], "ts": end / fps,
                      "score": round(float(np.abs(g(end) - g(last)).mean()), 2),
                      "ptr": pointer_of(g(end - 1), g(end))})
+    if max_frames == 1:
+        return kept[:1]
     if len(kept) > max_frames:  # keep first, last, and the biggest changes
+        mid = sorted(kept[1:-1], key=lambda k: k["score"], reverse=True)[:max_frames - 2]
+        kept = [kept[0]] + sorted(mid, key=lambda k: k["ts"]) + [kept[-1]]
+    return kept
+
+
+def _scaled_dimensions(source_width: int, source_height: int, target_width: int):
+    """Match ffmpeg's ``scale=TARGET_WIDTH:-2`` dimensions for raw output."""
+    if source_width <= 0 or source_height <= 0 or target_width <= 0:
+        raise ValueError("video dimensions and target width must be greater than zero")
+    target_height = max(2, round(source_height * target_width / source_width))
+    if target_height % 2:
+        target_height += 1
+    return target_width, target_height
+
+
+def _gray_from_rgb(rgb, width: int, height: int, downscale_to: int = 320):
+    """Convert one raw RGB frame to the small grayscale image used for diffs."""
+    from PIL import Image
+    import numpy as np
+
+    im = Image.fromarray(rgb.reshape((height, width, 3))).convert("L")
+    if downscale_to and im.width > downscale_to:
+        small_height = round(im.height * downscale_to / im.width)
+        im = im.resize((downscale_to, small_height))
+    return np.asarray(im, dtype="int16")
+
+
+def _save_rgb_frame(rgb, width: int, height: int, path: str):
+    from PIL import Image
+
+    image = Image.fromarray(rgb.reshape((height, width, 3)))
+    image.save(path, "JPEG", quality=90)
+
+
+def _read_raw_frame(stream, frame_bytes: int):
+    """Read exactly one rawvideo frame, tolerating short pipe reads."""
+    chunks = []
+    remaining = frame_bytes
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    data = b"".join(chunks)
+    if not data:
+        return None
+    if len(data) != frame_bytes:
+        raise RuntimeError(f"ffmpeg returned a partial raw frame ({len(data)}/{frame_bytes} bytes)")
+    return data
+
+
+def stream_keyframes(video: str, fps: float, width: int, source_width: int,
+                     source_height: int, diff_threshold: float, max_frames: int,
+                     tmpdir: str):
+    """Select changed frames without materializing the dense sample on disk.
+
+    ffmpeg emits raw RGB frames through a pipe. Only frames that survive diff
+    selection are encoded to JPEG, eliminating the old write-JPEG/read-JPEG/
+    copy cycle for every sampled frame.
+    """
+    import numpy as np
+
+    if fps <= 0:
+        raise ValueError("fps must be greater than zero")
+    if max_frames <= 0:
+        raise ValueError("max_frames must be greater than zero")
+    out_width, out_height = _scaled_dimensions(source_width, source_height, width)
+    frame_bytes = out_width * out_height * 3
+    command = [
+        "ffmpeg", "-v", "error", "-nostdin", "-i", video,
+        "-an", "-sn", "-dn", "-vf", f"fps={fps},scale={out_width}:{out_height},format=rgb24",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    kept = []
+    previous_gray = None
+    prior_gray = None
+    last_kept_gray = None
+    last_kept_index = -1
+    previous_rgb = None
+    frame_index = 0
+    try:
+        while True:
+            raw = _read_raw_frame(process.stdout, frame_bytes)
+            if raw is None:
+                break
+            current_rgb = np.frombuffer(raw, dtype=np.uint8)
+            current_gray = _gray_from_rgb(current_rgb, out_width, out_height)
+            current_path = os.path.join(tmpdir, f"k{frame_index:05d}.jpg")
+
+            if frame_index == 0:
+                _save_rgb_frame(current_rgb, out_width, out_height, current_path)
+                kept.append({"src": current_path, "ts": 0.0, "score": 0.0, "ptr": None})
+                last_kept_gray = current_gray
+                last_kept_index = 0
+                if max_frames == 1:
+                    return kept
+            else:
+                score = float(np.abs(current_gray - last_kept_gray).mean())
+                if score >= diff_threshold:
+                    _save_rgb_frame(current_rgb, out_width, out_height, current_path)
+                    kept.append({"src": current_path, "ts": frame_index / fps,
+                                 "score": round(score, 2),
+                                 "ptr": pointer_of(previous_gray, current_gray)})
+                    last_kept_gray = current_gray
+                    last_kept_index = frame_index
+
+            previous_rgb = current_rgb
+            prior_gray = previous_gray
+            previous_gray = current_gray
+            frame_index += 1
+
+        stderr = process.stderr.read().decode(errors="replace")
+        returncode = process.wait()
+        if returncode != 0:
+            raise RuntimeError(stderr.strip()[-800:] or "ffmpeg raw frame pass failed")
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        if process.stdout:
+            process.stdout.close()
+        if process.stderr:
+            process.stderr.close()
+
+    if not kept:
+        return []
+    if last_kept_index != frame_index - 1:
+        final_score = float(np.abs(previous_gray - last_kept_gray).mean())
+        final_path = os.path.join(tmpdir, f"k{frame_index - 1:05d}.jpg")
+        _save_rgb_frame(previous_rgb, out_width, out_height, final_path)
+        kept.append({"src": final_path, "ts": (frame_index - 1) / fps,
+                     "score": round(final_score, 2),
+                     "ptr": pointer_of(prior_gray, previous_gray) if prior_gray is not None else None})
+
+    if max_frames == 1:
+        return kept[:1]
+    if len(kept) > max_frames:
         mid = sorted(kept[1:-1], key=lambda k: k["score"], reverse=True)[:max_frames - 2]
         kept = [kept[0]] + sorted(mid, key=lambda k: k["ts"]) + [kept[-1]]
     return kept
@@ -439,6 +614,37 @@ def emit_html_report(outdir: str, transcript: dict, frames: list, meta: dict):
 
 def config_path() -> str:
     return os.path.expanduser("~/.qa-digest.json")
+
+
+def clean_generated_output(outdir: str):
+    """Remove only artifacts owned by qa-digest before a fresh run.
+
+    The output directory may contain user files, so do not remove the directory
+    itself. The frames directory is owned by this tool and contains generated
+    JPEGs only; clearing it prevents stale frames surviving a rerun with a
+    smaller frame cap.
+    """
+    generated_files = (
+        "transcript.md", "transcript.srt", "transcript.json", "digest.md",
+        "report.html", "clicks.json", "frames_index.md", "manifest.json",
+        "audio.wav",
+    )
+    for name in generated_files:
+        path = os.path.join(outdir, name)
+        if os.path.isfile(path):
+            os.unlink(path)
+
+    frames_dir = os.path.join(outdir, "frames")
+    if os.path.isdir(frames_dir):
+        for name in os.listdir(frames_dir):
+            generated_name = (
+                len(name) > 5 and name[:4].isdigit() and name[4] == "_"
+                and name.lower().endswith((".jpg", ".jpeg", ".png"))
+            )
+            if generated_name:
+                path = os.path.join(frames_dir, name)
+                if os.path.isfile(path):
+                    os.unlink(path)
 
 
 def load_or_init_config() -> dict:
@@ -684,17 +890,17 @@ def main():
                          "(default: saved config, else small; tiny fabricates on long clips)")
     ap.add_argument("--language", default=None, help="Force language code (e.g. en); default auto-detect")
     ap.add_argument("--compute-type", default="int8", help="faster-whisper compute type (default int8)")
-    ap.add_argument("--max-frames", type=int, default=60, help="Max keyframes to export (default 60)")
-    ap.add_argument("--frame-width", type=int, default=640, help="Keyframe width in px (default 640)")
-    ap.add_argument("--scene-threshold", type=float, default=27.0, help="ContentDetector threshold (default 27)")
-    ap.add_argument("--min-scene-len", type=float, default=1.0, help="Min scene length, frames (default ~1s)")
+    ap.add_argument("--max-frames", type=positive_int, default=60, help="Max keyframes to export (default 60)")
+    ap.add_argument("--frame-width", type=positive_int, default=640, help="Keyframe width in px (default 640)")
+    ap.add_argument("--scene-threshold", type=nonnegative_float, default=27.0, help="ContentDetector threshold (default 27)")
+    ap.add_argument("--min-scene-len", type=positive_float, default=1.0, help="Min scene length, frames (default ~1s)")
     ap.add_argument("--no-dedup", action="store_true",
                     help="Disable diff-based selection + pointer (fall back to scene/interval sampling)")
-    ap.add_argument("--sample-fps", type=float, default=2.0,
+    ap.add_argument("--sample-fps", type=positive_float, default=2.0,
                     help="Dense sample rate for diff mode (default 2/s)")
     ap.add_argument("--mode", choices=["insano", "strict", "standard", "lenient"], default=None,
                     help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default standard, or saved config)")
-    ap.add_argument("--diff-threshold", type=float, default=None,
+    ap.add_argument("--diff-threshold", type=nonnegative_float, default=None,
                     help="Mean gray delta to count a frame as changed (overrides --mode; lower = more frames)")
     ap.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
     ap.add_argument("--no-frames", action="store_true", help="Skip frame extraction")
@@ -703,6 +909,8 @@ def main():
                     help="Force HTML report generation (overrides a saved no_report config)")
     ap.add_argument("--json", action="store_true", help="Output JSON summary instead of human-readable text")
     ap.add_argument("--keep-audio", action="store_true", help="Keep the extracted wav")
+    ap.add_argument("--clean-output", action="store_true",
+                    help="Remove qa-digest artifacts from --out before running")
     args = ap.parse_args()
 
     if args.check:
@@ -776,6 +984,9 @@ def main():
         outdir = video + ".digest"
 
     frames_dir = os.path.join(outdir, "frames")
+    if args.clean_output:
+        eprint(f"[output] clearing generated artifacts in {outdir}")
+        clean_generated_output(outdir)
     os.makedirs(frames_dir, exist_ok=True)
 
     eprint(f"[probe] {video}")
@@ -795,7 +1006,7 @@ def main():
                    "max_frames": args.max_frames, "frame_width": args.frame_width,
                    "scene_threshold": args.scene_threshold, "mode": args.mode,
                    "diff_threshold": args.diff_threshold, "sample_fps": args.sample_fps,
-                   "dedup": not args.no_dedup},
+                   "dedup": not args.no_dedup, "clean_output": args.clean_output},
         "transcript": None, "frames": [], "scene_source": None,
     }
 
@@ -835,10 +1046,17 @@ def main():
             manifest["scene_source"] = "diff"
             tmpdir = tempfile.mkdtemp(prefix="digest_frames_")
             try:
-                eprint(f"[frames] dense sampling @ {args.sample_fps}/s for diff selection...")
-                files = dense_frames(video, args.sample_fps, args.frame_width, tmpdir)
-                kept = select_keyframes(files, args.sample_fps, args.diff_threshold, args.max_frames)
-                eprint(f"[frames] {len(files)} sampled -> {len(kept)} kept (changed frames only)")
+                eprint(f"[frames] streaming sample @ {args.sample_fps}/s for diff selection...")
+                try:
+                    kept = stream_keyframes(
+                        video, args.sample_fps, args.frame_width,
+                        meta["width"], meta["height"], args.diff_threshold,
+                        args.max_frames, tmpdir,
+                    )
+                except RuntimeError as exc:
+                    eprint("WARN: streaming frame pass failed:", str(exc)[-800:])
+                    kept = []
+                eprint(f"[frames] {len(kept)} kept (changed frames only; dense sample not written to disk)")
                 for out_i, k in enumerate(kept):
                     ts = k["ts"]
                     fname = f"{out_i:04d}_{hms(ts, compact=True)}.jpg"

@@ -60,6 +60,16 @@ if more than 30% of transcript segments come back low-confidence, it re-runs
 transcription one model size up and keeps the better result; and concurrent
 digests queue behind a lock instead of hanging.
 
+For efficient agent runs, use `--no-report --json --max-frames 20` and follow
+the bounded evidence loop in `SKILL.md`: inspect the transcript and manifest
+first, then use `scripts/evidence_queue.py` to open only frames that can change
+the conclusion.
+
+Diff sampling is streaming: ffmpeg sends the dense sample through a pipe and
+qa-digest encodes only the keyframes that survive selection. Intermediate
+sampled JPEGs are not written to disk, so longer or higher-resolution clips
+avoid the old write/read/copy cycle.
+
 Then tell Claude Code: **"digest this video: /path/to/clip.mov"** — or just hand
 it a screen recording and ask what happens.
 
@@ -77,6 +87,7 @@ python3 scripts/qa_digest.py "/path/to/clip.mov" \
 - `--no-frames` — transcript only, fast.
 - `--no-transcribe` — frames only (silent footage).
 - `--no-report` — skip the HTML report.
+- `--clean-output` — clear qa-digest artifacts before rerunning into an existing output directory.
 
 See `SKILL.md` for the full agent workflow, all flags, and the gotchas
 (macOS narrow-space filenames, `tiny` mishearings, the scenedetect/OpenCV
@@ -164,12 +175,15 @@ watch a folder outside those locations. See `watch/README.md`.
 ## Development
 
 ```bash
-pip install pytest
-python3 -m pytest tests/
+python3 -m venv .venv
+.venv/bin/python -m pip install pytest Pillow numpy
+bash scripts/ci.sh
 ```
 
-The tests cover the pure logic (timestamp formatting, frame selection, pointer
-math, click detection, markdown emitters) — no ffmpeg or Whisper needed.
+The local CI runner checks Python compilation and the unit suite. The tests
+cover the pure logic (timestamp formatting, frame selection, pointer math,
+click detection, markdown emitters) — no video download or Whisper model is
+needed.
 
 ## License
 
