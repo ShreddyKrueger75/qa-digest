@@ -1,4 +1,4 @@
-"""Unit tests for the pure logic in scripts/digest_movie.py.
+"""Unit tests for the pure logic in scripts/qa_digest.py.
 
 No ffmpeg, whisper, or network needed — these cover timestamp formatting,
 frame selection, pointer math, click detection, and the markdown emitters.
@@ -14,8 +14,8 @@ import sys
 import pytest
 
 _SPEC = importlib.util.spec_from_file_location(
-    "digest_movie",
-    os.path.join(os.path.dirname(__file__), "..", "scripts", "digest_movie.py"),
+    "qa_digest",
+    os.path.join(os.path.dirname(__file__), "..", "scripts", "qa_digest.py"),
 )
 dm = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(dm)

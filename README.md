@@ -1,4 +1,4 @@
-# movie-digest
+# qa-digest
 
 A [Claude Code](https://claude.com/claude-code) **skill** that lets Claude
 **watch and digest a local video file** — by transcribing its audio and
@@ -6,7 +6,7 @@ exporting keyframes, so the model can actually read what happens.
 
 Claude can't decode video or hear audio. This skill splits the work:
 
-- `scripts/digest_movie.py` transcribes the spoken dialogue with timestamps
+- `scripts/qa_digest.py` transcribes the spoken dialogue with timestamps
   (faster-whisper) and exports keyframes.
 - **Optimized for QA / bug-report recordings.** By default it keeps only the
   frames that *changed* (diff-based selection — no more 20 duplicate frames of a
@@ -26,8 +26,8 @@ the frames.
 Drop the folder into your Claude Code skills directory:
 
 ```bash
-cp -R movie-digest ~/.claude/skills/movie-digest
-# or, per-project:  cp -R movie-digest <project>/.claude/skills/movie-digest
+cp -R qa-digest ~/.claude/skills/qa-digest
+# or, per-project:  cp -R qa-digest <project>/.claude/skills/qa-digest
 ```
 
 Install the runtime deps once:
@@ -43,7 +43,7 @@ it a screen recording and ask what happens.
 ## Run the script directly
 
 ```bash
-python3 scripts/digest_movie.py "/path/to/clip.mov" \
+python3 scripts/qa_digest.py "/path/to/clip.mov" \
   --out "/path/to/clip.digest" --model small --max-frames 25 --analyze
 ```
 

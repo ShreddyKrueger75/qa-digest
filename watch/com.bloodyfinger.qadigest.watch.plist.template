@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.bloodyfinger.moviedigest.watch</string>
+  <string>com.bloodyfinger.qadigest.watch</string>
 
   <key>ProgramArguments</key>
   <array>
@@ -41,8 +41,8 @@
   </dict>
 
   <key>StandardOutPath</key>
-  <string>__LOG_DIR__/movie-digest-watch.out.log</string>
+  <string>__LOG_DIR__/qa-digest-watch.out.log</string>
   <key>StandardErrorPath</key>
-  <string>__LOG_DIR__/movie-digest-watch.err.log</string>
+  <string>__LOG_DIR__/qa-digest-watch.err.log</string>
 </dict>
 </plist>

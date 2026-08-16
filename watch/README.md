@@ -1,4 +1,4 @@
-# movie-digest watch
+# qa-digest watch
 
 Drop a screen recording into a synced folder from your iPad; the Mac digests it
 and writes the report back into the same folder.
@@ -12,7 +12,7 @@ viewer, the Mac does the work.
 ```bash
 cd watch
 ./install.sh          # writes a default config if you don't have one
-$EDITOR ~/.movie-digest-watch.json
+$EDITOR ~/.qa-digest-watch.json
 ./install.sh          # again, to load the launchd agent
 ```
 
@@ -38,8 +38,8 @@ are handed to `brctl download` and picked up on a later pass.
 
 ## Configuration
 
-All settings live in `~/.movie-digest-watch.json`. Nothing is hardcoded —
-`digest_watch.py --init` writes every key with its default.
+All settings live in `~/.qa-digest-watch.json`. Nothing is hardcoded —
+`qa_digest_watch.py --init` writes every key with its default.
 
 ### Where to look
 
@@ -54,12 +54,12 @@ All settings live in `~/.movie-digest-watch.json`. Nothing is hardcoded —
 | Key | Default | Notes |
 | --- | --- | --- |
 | `python_bin` | current interpreter | **Must be the interpreter that has `faster-whisper` installed.** |
-| `digest_script` | `../scripts/digest_movie.py` | Absolute path is safest. |
+| `digest_script` | `../scripts/qa_digest.py` | Absolute path is safest. |
 | `digest_timeout_seconds` | `3600` | A long clip on a big model can take a while. |
 
 ### Digest options
 
-Mirror the `digest_movie.py` flags: `mode`, `model`, `max_frames`, `analyze`,
+Mirror the `qa_digest.py` flags: `mode`, `model`, `max_frames`, `analyze`,
 `no_report`, `no_transcribe`, `no_frames`, `language`. Anything not exposed
 goes in `extra_args` as a list, e.g. `["--frame-width", "800"]`.
 
@@ -92,16 +92,16 @@ iPad without editing config.
 ## Manual use
 
 ```bash
-python3 digest_watch.py --dry-run          # what would run
-python3 digest_watch.py --once clip.mov    # force one file
-python3 digest_watch.py                    # one pass, same as launchd
-launchctl kickstart -k gui/$UID/com.bloodyfinger.moviedigest.watch
+python3 qa_digest_watch.py --dry-run          # what would run
+python3 qa_digest_watch.py --once clip.mov    # force one file
+python3 qa_digest_watch.py                    # one pass, same as launchd
+launchctl kickstart -k gui/$UID/com.bloodyfinger.qadigest.watch
 ```
 
 ## Logs
 
-- `~/Library/Logs/movie-digest-watch.log` — the watcher's own log
-- `~/Library/Logs/movie-digest-watch.{out,err}.log` — raw launchd capture
+- `~/Library/Logs/qa-digest-watch.log` — the watcher's own log
+- `~/Library/Logs/qa-digest-watch.{out,err}.log` — raw launchd capture
 
 Set `log_level` to `debug` to see the exact command being run.
 
@@ -112,7 +112,7 @@ Set `log_level` to `debug` to see the exact command being run.
   you need goes in the plist's `EnvironmentVariables`.
 - **Full Disk Access.** If `watch_dir` is in iCloud Drive, macOS may need to
   grant the agent access on first run. If digests silently never happen, check
-  `movie-digest-watch.err.log` for permission errors.
-- **`digest_movie.py` prompts on first run.** It asks for a mode when
-  `~/.movie-digest.json` is missing — which would hang under launchd. The
+  `qa-digest-watch.err.log` for permission errors.
+- **`qa_digest.py` prompts on first run.** It asks for a mode when
+  `~/.qa-digest.json` is missing — which would hang under launchd. The
   watcher seeds that file and runs the script with stdin closed.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Install (or reinstall) the movie-digest folder watcher as a launchd agent.
+# Install (or reinstall) the qa-digest folder watcher as a launchd agent.
 #
-#   ./install.sh                 # install using ~/.movie-digest-watch.json
+#   ./install.sh                 # install using ~/.qa-digest-watch.json
 #   ./install.sh --config PATH   # install using a specific config
 #   ./install.sh --uninstall     # unload and remove the agent
 #
@@ -10,11 +10,11 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LABEL="com.bloodyfinger.moviedigest.watch"
+LABEL="com.bloodyfinger.qadigest.watch"
 PLIST_DEST="$HOME/Library/LaunchAgents/$LABEL.plist"
 TEMPLATE="$HERE/$LABEL.plist.template"
-WATCHER="$HERE/digest_watch.py"
-CONFIG="$HOME/.movie-digest-watch.json"
+WATCHER="$HERE/qa_digest_watch.py"
+CONFIG="$HOME/.qa-digest-watch.json"
 LOG_DIR="$HOME/Library/Logs"
 INTERVAL=300
 
@@ -94,8 +94,8 @@ echo "Installed $LABEL"
 echo "  watching : $WATCH_DIR"
 echo "  config   : $CONFIG"
 echo "  python   : $PYTHON_BIN"
-echo "  logs     : $LOG_DIR/movie-digest-watch.{out,err}.log"
-echo "             $HOME/Library/Logs/movie-digest-watch.log"
+echo "  logs     : $LOG_DIR/qa-digest-watch.{out,err}.log"
+echo "             $HOME/Library/Logs/qa-digest-watch.log"
 echo
 echo "Drop a video into the watch folder to test, or run:"
 echo "  launchctl kickstart -k gui/$UID/$LABEL"

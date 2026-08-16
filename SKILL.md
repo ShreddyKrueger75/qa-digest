@@ -1,5 +1,5 @@
 ---
-name: movie-digest
+name: qa-digest
 description: >-
   Watch and digest a local video file — transcribe its narration and export
   keyframes so Claude can actually read what happens. Use whenever someone
@@ -10,7 +10,7 @@ description: >-
   bug-report / UI-review screen recording. Local files only.
 ---
 
-# movie-digest
+# qa-digest
 
 Claude can't decode video or hear audio. This skill splits the job: a script
 does the mechanical part — transcribes the spoken audio with timestamps and
@@ -45,14 +45,14 @@ On first run in an interactive terminal, the script prompts for three defaults:
 (3) Output directory
 ```
 
-Your choices save to `~/.movie-digest.json` — reconfigure anytime by deleting that file.
+Your choices save to `~/.qa-digest.json` — reconfigure anytime by deleting that file.
 
 Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `standard`, HTML report on) without prompting.
 
 ## Run (the one path)
 
 ```bash
-python3 scripts/digest_movie.py "/path/to/CLIP.mov" \
+python3 scripts/qa_digest.py "/path/to/CLIP.mov" \
   --out "/path/to/CLIP.digest" --model small --max-frames 25
 ```
 
@@ -142,7 +142,7 @@ Bug report generation is opt-in via `--analyze`.
   or copy to a space-free path first:
   ```bash
   f=$(ls *Recording*9.40*.mov); cp "$f" /tmp/clip.mov
-  python3 scripts/digest_movie.py /tmp/clip.mov --out /tmp/clip.digest --model small
+  python3 scripts/qa_digest.py /tmp/clip.mov --out /tmp/clip.digest --model small
   ```
   The script prints this exact hint if it can't find the file.
 - **`--model tiny` mishears a word or two** — it heard "tempo" as "VPN" and

@@ -16,7 +16,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "watch"))
 
-import digest_watch as dw  # noqa: E402
+import qa_digest_watch as dw  # noqa: E402
 
 
 def cfg(**overrides):

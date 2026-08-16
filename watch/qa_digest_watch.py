@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-digest_watch.py — watch a folder for video files and digest them automatically.
+qa_digest_watch.py — watch a folder for video files and digest them automatically.
 
 Designed to be driven by launchd so you can drop a screen recording into a
 synced folder from an iPad and get a report back without touching the Mac.
@@ -8,14 +8,14 @@ synced folder from an iPad and get a report back without touching the Mac.
 Everything is configurable. No behaviour is hardcoded: the watch folder, the
 digest flags, how long to wait for a sync to finish, what happens to a clip
 after it is processed, and which notifications fire are all read from a JSON
-config file (default: ~/.movie-digest-watch.json).
+config file (default: ~/.qa-digest-watch.json).
 
 Usage:
-    digest_watch.py                     # one pass, using the default config
-    digest_watch.py --config PATH       # one pass, using a specific config
-    digest_watch.py --init              # write a default config and exit
-    digest_watch.py --dry-run           # report what would be digested
-    digest_watch.py --once FILE         # digest a single file, ignoring state
+    qa_digest_watch.py                     # one pass, using the default config
+    qa_digest_watch.py --config PATH       # one pass, using a specific config
+    qa_digest_watch.py --init              # write a default config and exit
+    qa_digest_watch.py --dry-run           # report what would be digested
+    qa_digest_watch.py --once FILE         # digest a single file, ignoring state
 
 Python 3.8+. No third-party dependencies (the digest script has its own).
 """
@@ -37,7 +37,7 @@ from email.message import EmailMessage
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.movie-digest-watch.json")
+DEFAULT_CONFIG_PATH = os.path.expanduser("~/.qa-digest-watch.json")
 
 # --------------------------------------------------------------------------
 # Defaults. Every key here can be overridden in the config file.
@@ -52,10 +52,10 @@ DEFAULTS = {
     # --- what to run -------------------------------------------------------
     # python_bin must be an interpreter that has faster-whisper installed.
     "python_bin": sys.executable,
-    "digest_script": os.path.join(REPO_ROOT, "scripts", "digest_movie.py"),
+    "digest_script": os.path.join(REPO_ROOT, "scripts", "qa_digest.py"),
     "digest_timeout_seconds": 3600,
 
-    # --- digest options (mirror digest_movie.py flags) ---------------------
+    # --- digest options (mirror qa_digest.py flags) ---------------------
     "mode": "standard",
     "model": "small",
     "max_frames": 60,
@@ -102,9 +102,9 @@ DEFAULTS = {
     },
 
     # --- bookkeeping -------------------------------------------------------
-    "state_file": "~/.movie-digest-watch-state.json",
-    "lock_file": "~/.movie-digest-watch.lock",
-    "log_file": "~/Library/Logs/movie-digest-watch.log",
+    "state_file": "~/.qa-digest-watch-state.json",
+    "lock_file": "~/.qa-digest-watch.lock",
+    "log_file": "~/Library/Logs/qa-digest-watch.log",
     "log_level": "info",
     # Re-digest a file if it changes after having been processed.
     "reprocess_on_change": True,
@@ -373,11 +373,11 @@ def wait_until_stable(path, cfg, log):
 
 def ensure_digest_config(log):
     """
-    digest_movie.py runs an interactive first-run prompt when ~/.movie-digest.json
+    qa_digest.py runs an interactive first-run prompt when ~/.qa-digest.json
     is missing. Under launchd there is no terminal, so that prompt would hang or
     crash the run. Make sure the file exists before we invoke the script.
     """
-    path = os.path.expanduser("~/.movie-digest.json")
+    path = os.path.expanduser("~/.qa-digest.json")
     if os.path.isfile(path):
         return
     with open(path, "w") as fh:
@@ -432,7 +432,7 @@ def build_command(path, cfg):
 
 
 def run_digest(path, cfg, log):
-    """Run digest_movie.py on one file. Returns (ok, outdir, detail)."""
+    """Run qa_digest.py on one file. Returns (ok, outdir, detail)."""
     cmd, outdir, mode = build_command(path, cfg)
     os.makedirs(os.path.dirname(outdir) or ".", exist_ok=True)
     log.info("digesting %s (mode=%s)" % (os.path.basename(path), mode))
@@ -552,7 +552,7 @@ def write_status_file(cfg, entries, log):
     """A plain-text status board readable from the iPad Files app."""
     root = expand(cfg["watch_dir"])
     path = os.path.join(root, cfg["status_filename"])
-    lines = ["# movie-digest status", "",
+    lines = ["# qa-digest status", "",
              "Last run: %s" % now_iso(), ""]
     if not entries:
         lines.append("Nothing to do — no new clips.")
@@ -580,13 +580,13 @@ def dispatch_notifications(cfg, entries, log):
     fail_count = len(entries) - ok_count
     summary = "%d digested, %d failed" % (ok_count, fail_count)
     if "macos" in channels:
-        notify_macos("movie-digest", summary, log)
+        notify_macos("qa-digest", summary, log)
     if "email" in channels:
         for entry in entries:
             status = "ready" if entry["ok"] else "FAILED"
             notify_email(
                 cfg,
-                "movie-digest: %s %s" % (entry["name"], status),
+                "qa-digest: %s %s" % (entry["name"], status),
                 entry["detail"],
                 entry.get("report"),
                 log,
