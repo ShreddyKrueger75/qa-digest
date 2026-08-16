@@ -14,6 +14,13 @@ description: >-
 
 # qa-digest
 
+## Introduction
+
+`qa-digest` is a local-only QA tool for narrated screen recordings. It
+transcribes the audio, extracts meaningful keyframes, and produces a
+timestamped digest so visual bugs can be verified against what was said. It
+does not upload recordings or file issues unless explicitly requested.
+
 Claude can't decode video or hear audio. This skill splits the job: a script
 does the mechanical part — transcribes the spoken audio with timestamps and
 exports one keyframe per scene — and then **Claude reads the transcript and
