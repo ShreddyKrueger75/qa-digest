@@ -2,7 +2,9 @@
 
 A [Claude Code](https://claude.com/claude-code) **skill** that lets Claude
 **watch and digest a local video file** — by transcribing its audio and
-exporting keyframes, so the model can actually read what happens.
+exporting keyframes, so the model can actually read what happens. I developed
+it as part of [The Ad Bench](https://theadbench.ai), my creative scoring
+platform.
 
 Claude can't decode video or hear audio. This skill splits the work:
 
@@ -86,6 +88,45 @@ Every digest includes:
 - **`lenient`** — landmark moments only. 5–10 frames per 2-min clip. For high-level demos or quick reviews where you only need major state shifts.
 
 All modes keep the pointer and change-score columns, digest.md, and report.html. Only the number of kept frames changes.
+
+## File the bugs as GitHub issues
+
+Run it from inside the project you're QA'ing. Claude reads the digest, lists
+the bugs it found as one-line summaries, you pick which ones are real, and it
+files them:
+
+```bash
+python3 scripts/file_issues.py --digest "/path/to/CLIP.digest" --issues bugs.json --dry-run
+python3 scripts/file_issues.py --digest "/path/to/CLIP.digest" --issues bugs.json
+```
+
+The repo comes from the current directory's git remote. Override with
+`--repo owner/name`.
+
+Keyframes referenced by a bug get pushed to an orphan `qa-assets` branch and
+linked as raw URLs in the issue body. GitHub's REST API can't attach images to
+an issue the way the web UI can, so this is the workaround. The branch shares no
+history with your code.
+
+On a private repo those raw URLs need auth, so the images only render for people
+signed in with access. The script detects that and says so in the issue.
+
+Needs the `gh` CLI authenticated with `repo` scope. No token is stored anywhere.
+
+## Walk-away mode: watch a folder
+
+`watch/` installs a launchd agent that digests anything dropped into a folder.
+Point it at a synced folder and you can hand it a recording from an iPad and get
+the report back without touching the Mac.
+
+```bash
+cd watch && ./install.sh
+```
+
+One caveat worth knowing before you try it: macOS blocks background agents from
+reading iCloud Drive, Google Drive, and anything else under
+`~/Library/CloudStorage`. Either grant Full Disk Access to the interpreter or
+watch a folder outside those locations. See `watch/README.md`.
 
 ## Requirements
 
