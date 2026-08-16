@@ -153,5 +153,50 @@ class TestRawUrl(unittest.TestCase):
             url, "https://raw.githubusercontent.com/o/r/qa-assets/frames/x/a.jpg")
 
 
+class TestParseRemoteUrl(unittest.TestCase):
+    """
+    Repo detection reads the git remote rather than calling gh, because
+    `gh repo view --json` uses GraphQL and has a separate quota that can be
+    exhausted while REST still works.
+    """
+
+    def test_https_remote(self):
+        self.assertEqual(
+            fi.parse_remote_url("https://github.com/ShreddyKrueger75/qa-digest.git"),
+            "ShreddyKrueger75/qa-digest")
+
+    def test_https_without_git_suffix(self):
+        self.assertEqual(
+            fi.parse_remote_url("https://github.com/owner/name"), "owner/name")
+
+    def test_scp_style_ssh_remote(self):
+        self.assertEqual(
+            fi.parse_remote_url("git@github.com:owner/name.git"), "owner/name")
+
+    def test_ssh_protocol_remote(self):
+        self.assertEqual(
+            fi.parse_remote_url("ssh://git@github.com/owner/name.git"),
+            "owner/name")
+
+    def test_trailing_newline_is_tolerated(self):
+        self.assertEqual(
+            fi.parse_remote_url("https://github.com/owner/name.git\n"),
+            "owner/name")
+
+    def test_non_github_remote_returns_none(self):
+        self.assertIsNone(
+            fi.parse_remote_url("https://gitlab.com/owner/name.git"))
+
+    def test_empty_returns_none(self):
+        self.assertIsNone(fi.parse_remote_url(""))
+        self.assertIsNone(fi.parse_remote_url(None))
+
+    def test_incomplete_path_returns_none(self):
+        self.assertIsNone(fi.parse_remote_url("https://github.com/owner"))
+
+    def test_explicit_repo_short_circuits(self):
+        self.assertEqual(fi.detect_repo("a/b"), "a/b")
+
+
 if __name__ == "__main__":
     unittest.main()

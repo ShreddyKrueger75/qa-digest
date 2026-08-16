@@ -80,24 +80,64 @@ def require_gh():
                          "Run: gh auth login\n%s" % exc)
 
 
+def parse_remote_url(url):
+    """
+    git remote URL -> "owner/name", or None if it isn't a GitHub remote.
+
+    Handles the three shapes git hands out:
+        https://github.com/owner/name.git
+        git@github.com:owner/name.git
+        ssh://git@github.com/owner/name.git
+    """
+    if not url:
+        return None
+    url = url.strip()
+    if url.endswith(".git"):
+        url = url[:-4]
+    if "github.com" not in url:
+        return None
+    if url.startswith("git@"):
+        _, _, path = url.partition(":")
+    else:
+        marker = "github.com"
+        path = url[url.index(marker) + len(marker):].lstrip("/:")
+    parts = [p for p in path.split("/") if p]
+    if len(parts) < 2:
+        return None
+    return "%s/%s" % (parts[-2], parts[-1])
+
+
 def detect_repo(explicit=None):
-    """owner/name for the repo we're filing against."""
+    """
+    owner/name for the repo we're filing against.
+
+    Read the git remote directly rather than asking gh. `gh repo view --json`
+    goes through GraphQL, which has its own hourly quota separate from REST --
+    so it can fail while every call this script actually needs still works.
+    Parsing the remote costs nothing and works offline.
+    """
     if explicit:
         return explicit
     try:
-        data = gh("repo", "view", "--json", "nameWithOwner")
-        return data["nameWithOwner"]
-    except (GhError, KeyError, TypeError):
-        raise SystemExit(
-            "ERROR: could not work out which repo to file against.\n"
-            "Run this from inside the project's git checkout, or pass "
-            "--repo owner/name.")
+        url = subprocess.run(["git", "remote", "get-url", "origin"],
+                             capture_output=True, text=True).stdout
+    except OSError:
+        url = ""
+    repo = parse_remote_url(url)
+    if repo:
+        return repo
+    raise SystemExit(
+        "ERROR: could not work out which repo to file against.\n"
+        "No GitHub 'origin' remote in %s.\n"
+        "Run this from inside the project's git checkout, or pass "
+        "--repo owner/name." % os.getcwd())
 
 
 def repo_is_private(repo):
+    """REST, not GraphQL -- see the note in detect_repo."""
     try:
-        return bool(gh("repo", "view", repo, "--json", "isPrivate")["isPrivate"])
-    except (GhError, KeyError, TypeError):
+        return bool(api("GET", "/repos/%s" % repo).get("private"))
+    except (GhError, AttributeError, TypeError):
         return False
 
 
