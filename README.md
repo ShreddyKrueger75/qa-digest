@@ -5,6 +5,8 @@ video files. It transcribes the audio and exports keyframes so Claude can read
 what happened. I developed it as part of [The Ad Bench](https://theadbench.ai),
 my creative scoring platform.
 
+For Codex installation and usage, see [README.codex.md](README.codex.md).
+
 Claude cannot decode video or hear audio, so the skill splits the work:
 
 - `scripts/qa_digest.py` transcribes the spoken dialogue with timestamps
