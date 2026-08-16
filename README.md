@@ -25,11 +25,21 @@ the frames.
 
 ## Install as a skill
 
-Drop the folder into your Claude Code skills directory:
+Clone straight into your Claude Code skills directory:
 
 ```bash
-cp -R qa-digest ~/.claude/skills/qa-digest
-# or, per-project:  cp -R qa-digest <project>/.claude/skills/qa-digest
+git clone --depth 1 https://github.com/ShreddyKrueger75/qa-digest \
+  ~/.claude/skills/qa-digest
+rm -rf ~/.claude/skills/qa-digest/.git
+# or, per-project: clone into <project>/.claude/skills/qa-digest
+```
+
+Already have a checkout? Copy it without the repo metadata — a plain `cp -R`
+drags `.git` along, which is most of the installed size and none of the use:
+
+```bash
+rsync -a --exclude '.git' --exclude '.DS_Store' \
+  qa-digest/ ~/.claude/skills/qa-digest/
 ```
 
 Install the runtime deps once:
