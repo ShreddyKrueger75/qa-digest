@@ -325,22 +325,27 @@ def main(argv=None):
                 os.path.basename(local)))
 
         body = build_body(issue, image_urls, private)
-        cmd = ["issue", "create", "--repo", repo,
-               "--title", issue["title"], "--body", body]
-        for label in issue.get("labels") or []:
-            cmd += ["--label", label]
+        # REST, not `gh issue create` -- that command is GraphQL-backed and
+        # dies when the GraphQL quota is spent, even though the REST quota
+        # (which everything else here uses) is untouched.
+        payload = {"title": issue["title"], "body": body}
+        labels = issue.get("labels") or []
+        if labels:
+            payload["labels"] = labels
         try:
-            url = gh(*cmd, parse=False)
+            result = api("POST", "/repos/%s/issues" % repo, payload)
         except GhError as exc:
-            # A missing label is the usual culprit and it's recoverable.
-            if "label" in str(exc).lower() and issue.get("labels"):
+            # An unknown label is a 422 and is worth recovering from; losing a
+            # written-up bug because a label was misspelled would be silly.
+            if labels and "label" in str(exc).lower():
                 eprint("[warn] labels rejected (%s) - filing without them"
-                       % ", ".join(issue["labels"]))
-                url = gh("issue", "create", "--repo", repo,
-                         "--title", issue["title"], "--body", body, parse=False)
+                       % ", ".join(labels))
+                result = api("POST", "/repos/%s/issues" % repo,
+                             {"title": issue["title"], "body": body})
             else:
                 raise SystemExit("ERROR: could not create issue %r:\n%s"
                                  % (issue["title"], exc))
+        url = result.get("html_url", "(no url returned)")
         eprint("[filed] %s" % url)
         created.append({"title": issue["title"], "url": url})
 
