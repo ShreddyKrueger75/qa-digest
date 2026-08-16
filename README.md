@@ -50,13 +50,11 @@ python3 scripts/qa_digest.py "/path/to/clip.mov" \
 - `--model tiny|base|small|medium|large-v3` — accuracy vs. speed. `tiny` only safe
   for short (<~2 min) continuously-narrated clips; fabricates text otherwise.
   `small` is the safe default; bigger models slower but more accurate.
-- `--analyze-model MODEL` — Claude model used by `--analyze` (default claude-haiku-4-5-20251001).
-- `--json` — machine-readable summary: JSON object with output_dir/manifest/outputs instead of human summary.
 - `--max-frames N` — keyframe cap (default 60).
 - `--analyze` — synthesize a structured bug report (needs `ANTHROPIC_API_KEY` env var).
 - `--no-frames` — transcript only, fast.
 - `--no-transcribe` — frames only (silent footage).
-- `--report` / `--no-report` — force the HTML report on/off, overriding the saved config.
+- `--no-report` — skip the HTML report.
 
 See `SKILL.md` for the full agent workflow, all flags, and the gotchas
 (macOS narrow-space filenames, `tiny` mishearings, the scenedetect/OpenCV

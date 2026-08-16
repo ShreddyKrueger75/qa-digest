@@ -7,7 +7,9 @@ description: >-
   watched, summarized, broken down, analyzed, or when a screen recording
   narrates a bug/feature/review out loud: "digest this movie", "watch this",
   "what's in this footage", "transcribe and break down this clip", or any
-  bug-report / UI-review screen recording. Local files only.
+  bug-report / UI-review screen recording. Also files the bugs it finds as
+  GitHub issues, with keyframes attached, when asked to "file these", "open
+  tickets for these", or "turn this into issues". Local files only.
 ---
 
 # qa-digest
@@ -61,12 +63,11 @@ Then **read `<out>/transcript.md` first**, then view the frames listed in
 
 Flags that matter:
 - `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default standard).
-- `--no-report` — skip HTML report (frames + digest.md only). `--report` forces
-  it back on if the saved config has reports off.
-- `--analyze` — synthesize a structured bug report from the digest (requires `ANTHROPIC_API_KEY`).
-- `--analyze-model MODEL` — Claude model used by `--analyze` (default claude-haiku-4-5-20251001).
-- `--json` — machine-readable summary: JSON object with output_dir/manifest/outputs instead of human summary.
-- `--model tiny|base|small|medium|large-v3` — accuracy vs speed; choose based on clip length and importance:
+- `--no-report` — skip HTML report (frames + digest.md only).
+- `--analyze` — synthesize a structured bug report from the digest (requires
+  `ANTHROPIC_API_KEY`). Only needed for unattended runs — when Claude is in the
+  loop it reads `digest.md` and writes the findings itself, no key required.
+- `--model tiny|base|small|medium|large-v3` — accuracy vs speed (default `base`); choose based on clip length and importance:
   - `tiny` — only for short clips (under ~2 minutes) with continuous narration. On longer or sparsely-narrated recordings it fabricates plausible-sounding text instead of failing.
   - `small` — the safe default for anything longer, and for anything where the narration is the point (bug reports, reviews).
   - Bigger models (`base`, `medium`, `large-v3`) = slower but more accurate. Use `base` for a real film or when a transcript reads like nonsense — re-run with a larger model before acting on it.
@@ -92,6 +93,56 @@ report.html        self-contained HTML review document
 clicks.json        suspected click/flash moments (diff mode)
 manifest.json      metadata + full frame list (+ pointer) + transcript paths
 ```
+
+## Filing bugs as GitHub issues
+
+After you've read the digest, you can turn findings into GitHub issues. **Never
+file without the user picking first.** The flow is:
+
+1. Read `digest.md` and write up every distinct bug you found.
+2. Present them as a **numbered list of one-line summaries** — title plus the
+   timestamp it happens at. Nothing else; the user is choosing, not reading.
+3. Ask which to file. Accept "1 and 3", "all", "none".
+4. Write only the chosen ones to a JSON file and run:
+
+```bash
+python3 scripts/file_issues.py --digest "/path/to/CLIP.digest" --issues bugs.json
+```
+
+The repo is inferred from the current directory's git remote, so run this from
+inside the project being QA'd. Override with `--repo owner/name`.
+
+`bugs.json` is a list of objects:
+
+```json
+[
+  {
+    "title": "Grid connector drops on second placement",
+    "body": "**Steps**\n1. ...\n\n**Expected** ...\n\n**Actual** ...",
+    "frames": ["frames/0012_00h01m04s.jpg"],
+    "labels": ["bug"]
+  }
+]
+```
+
+`frames` are paths relative to the digest dir. They're uploaded to an orphan
+`qa-assets` branch (created on first use, sharing no history with your code) and
+rewritten as raw URLs in the issue body — the REST API can't attach images to an
+issue the way the web UI can.
+
+Flags: `--dry-run` prints what would be filed and uploads nothing — **use it
+first**. `--no-images` files text-only. `--assets-branch` renames the asset
+branch.
+
+Requires the `gh` CLI authenticated with `repo` scope (`gh auth login`).
+
+**Caveat:** on a **private** repo, `raw.githubusercontent.com` URLs need auth,
+so the images only render for signed-in users with access. The script detects
+this and adds a note to the issue.
+
+Every issue body should anchor to timestamps and quote the narration. If a
+segment was marked `⚠️ low-confidence`, do not quote it as fact in a ticket —
+re-run with a larger `--model` first.
 
 ## QA mode (default): changed frames only + pointer
 
