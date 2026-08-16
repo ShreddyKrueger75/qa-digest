@@ -141,6 +141,23 @@ def repo_is_private(repo):
         return False
 
 
+def open_issue_titles(repo):
+    """
+    Titles of open issues, lowercased, for duplicate detection. Filing the
+    same digest twice would otherwise create identical twin issues.
+    """
+    titles = {}
+    try:
+        page = api("GET", "/repos/%s/issues?state=open&per_page=100" % repo)
+    except GhError:
+        return titles
+    for item in page or []:
+        if isinstance(item, dict) and not item.get("pull_request"):
+            titles[item.get("title", "").strip().lower()] = item.get(
+                "html_url", "")
+    return titles
+
+
 # --------------------------------------------------------------------------
 # Asset branch
 # --------------------------------------------------------------------------
@@ -273,6 +290,8 @@ def main(argv=None):
                          % DEFAULT_ASSETS_BRANCH)
     ap.add_argument("--no-images", action="store_true",
                     help="File text-only issues; skip uploading keyframes")
+    ap.add_argument("--allow-duplicates", action="store_true",
+                    help="File even when an open issue already has the same title")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print what would be filed, upload nothing")
     args = ap.parse_args(argv)
@@ -306,6 +325,23 @@ def main(argv=None):
     repo = detect_repo(args.repo)
     private = repo_is_private(repo)
     eprint("[repo] %s%s" % (repo, " (private)" if private else ""))
+
+    if not args.allow_duplicates:
+        existing = open_issue_titles(repo)
+        kept = []
+        for issue in issues:
+            match = existing.get(issue["title"].strip().lower())
+            if match:
+                eprint("[skip] already open: %r\n       %s"
+                       % (issue["title"], match))
+            else:
+                kept.append(issue)
+        if not kept:
+            eprint("Nothing to file - every issue already exists. "
+                   "Use --allow-duplicates to override.")
+            print(json.dumps({"repo": repo, "created": []}, indent=2))
+            return 0
+        issues = kept
 
     needs_assets = any(issue["_frames"] for issue in issues)
     if needs_assets and not branch_exists(repo, args.assets_branch):

@@ -19,7 +19,6 @@ Outputs (under --out, default <video>.digest):
   frames_index.md  frame -> timestamp + change score + pointer table
   digest.md        transcript + frames interleaved by time
   report.html      self-contained review (embedded images, email-ready)
-  bug_report.md    structured findings (with --analyze)
   clicks.json      detected click/action moments (diff mode only)
   manifest.json    metadata, params, full frame list, transcript paths
 
@@ -54,10 +53,7 @@ import sys
 import tempfile
 from html import escape
 
-try:
-    from anthropic import Anthropic
-except ImportError:
-    Anthropic = None
+import fcntl
 
 
 def eprint(*a):
@@ -466,10 +462,10 @@ def prompt_config() -> dict:
     eprint("  1. Transcribes your video's audio (what you said)")
     eprint("  2. Extracts keyframes (what changed on screen)")
     eprint("  3. Localizes pointers (where you clicked/interacted)")
-    eprint("  4. Synthesizes bug findings (with --analyze)")
+    eprint("  4. Detects clicks and pointer positions (clicks.json)")
     eprint("")
     eprint("Output: digest.md (transcript + frames woven), report.html")
-    eprint("        (self-contained review), bug_report.md (structured findings),")
+    eprint("        (self-contained review),")
     eprint("        clicks.json (detected actions)\n")
 
     eprint("━━━ (1) Frame selection mode ━━━\n")
@@ -546,7 +542,17 @@ def prompt_config() -> dict:
         output_dir = os.path.expanduser(output_dir)
     eprint(f"  ✓ {'CUSTOM: ' + output_dir if output_dir else 'DEFAULT: <video>.digest'}\n")
 
-    cfg = {"mode": mode, "no_report": no_report}
+    eprint("━━━ (4) Whisper model ━━━\n")
+    eprint("  tiny   — fastest; fabricates text on long/sparse clips")
+    eprint("  base   — quick; fine for rough passes")
+    eprint("  small  — the safe default when narration matters (recommended)")
+    eprint("  medium / large-v3 — slower, most accurate\n")
+    model_choice = input("  Model [default: small]: ").strip().lower()
+    model = model_choice if model_choice in ("tiny", "base", "small", "medium",
+                                             "large-v3") else "small"
+    eprint(f"  ✓ {model}\n")
+
+    cfg = {"mode": mode, "no_report": no_report, "model": model}
     if output_dir:
         cfg["output_dir"] = output_dir
     try:
@@ -560,108 +566,122 @@ def prompt_config() -> dict:
     return cfg
 
 
-def analyze_digest(outdir: str, transcript: dict, model: str = "claude-haiku-4-5-20251001", frames: list = None) -> str:
-    """Use Claude to synthesize bug findings from the digest."""
-    if Anthropic is None:
-        eprint("ERROR: --analyze requires: pip install anthropic")
-        return None
+MODEL_LADDER = ["tiny", "base", "small", "medium", "large-v3"]
+ESCALATE_THRESHOLD = 0.30
 
-    # Read the digest.md we just created
-    digest_path = os.path.join(outdir, "digest.md")
-    if not os.path.isfile(digest_path):
-        eprint("ERROR: digest.md not found, cannot analyze")
-        return None
 
-    with open(digest_path) as f:
-        digest_content = f.read()
+def maybe_escalate_model(transcript, wav, args):
+    """
+    If too many segments are low-confidence, re-transcribe one model size up.
+    Turns "re-check with a larger model before quoting" from advice into
+    behaviour. One escalation max; the better result wins.
+    """
+    if not transcript or not transcript.get("segments"):
+        return transcript
+    segs = transcript["segments"]
+    low = sum(1 for s in segs if is_low_confidence(s))
+    ratio = low / len(segs)
+    if ratio <= ESCALATE_THRESHOLD:
+        return transcript
+    try:
+        idx = MODEL_LADDER.index(args.model)
+    except ValueError:
+        return transcript
+    if idx + 1 >= len(MODEL_LADDER):
+        return transcript
+    bigger = MODEL_LADDER[idx + 1]
+    eprint(f"[transcribe] {low}/{len(segs)} segments low-confidence "
+           f"({ratio:.0%}) — retrying with '{bigger}'...")
+    retry = transcribe(wav, bigger, args.language, args.compute_type)
+    if not retry or not retry.get("segments"):
+        return transcript
+    retry_segs = retry["segments"]
+    retry_low = sum(1 for s in retry_segs if is_low_confidence(s))
+    retry_ratio = retry_low / len(retry_segs)
+    if retry_ratio < ratio:
+        eprint(f"[transcribe] '{bigger}' better: {retry_low}/{len(retry_segs)} "
+               f"low-confidence ({retry_ratio:.0%}) — keeping it")
+        return retry
+    eprint(f"[transcribe] '{bigger}' no better — keeping '{args.model}' result")
+    return transcript
 
-    eprint("[analyze] calling Claude to synthesize findings...")
 
-    client = Anthropic()
+def resolve_space_variants(path):
+    """
+    macOS screen-recording names put a narrow no-break space (U+202F) before
+    "PM"/"AM", so the literal path a user copies never matches the file. Try
+    every space variant interchangeably; return a match only if it's unique.
+    """
+    d, name = os.path.split(path)
+    pattern = ""
+    for ch in name:
+        if ch in (" ", " ", " "):
+            pattern += "[   ]"
+        elif ch in "[*?":
+            pattern += "[" + ch + "]"
+        else:
+            pattern += ch
+    matches = glob.glob(os.path.join(d or ".", pattern))
+    matches = [m for m in matches if os.path.isfile(m)]
+    if len(matches) == 1:
+        return os.path.abspath(matches[0])
+    return None
 
-    # Build message content: text + images
-    content = [{
-        "type": "text",
-        "text": f"""You are a QA engineer analyzing a screen recording digest.
 
-The digest below contains a transcript (what was said) woven with keyframes
-(what changed on screen). Timestamps are like [00:00:15].
+def acquire_single_instance_lock():
+    """
+    Concurrent digests have hung in practice (two Whisper models fighting for
+    memory). Serialise: second invocation waits for the first to finish.
+    Returns the lock handle, which must stay referenced until exit.
+    """
+    path = os.path.expanduser("~/.qa-digest.lock")
+    handle = open(path, "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        eprint("[lock] another digest is running — waiting for it to finish...")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
 
-Synthesize a structured bug report from this digest:
-1. **Issue title** — one-line summary
-2. **Steps to reproduce** — numbered, clear
-3. **Expected behavior** — what should happen
-4. **Actual behavior** — what actually happened
-5. **Affected areas** — UI surfaces, features impacted
-6. **Key timestamps** — moments that prove the issue (e.g., "[00:00:15] widget fails to update")
 
-Keep it concise and actionable — this goes into a GitHub issue.
-
----
-
-{digest_content}
-"""
-    }]
-
-    # Attach up to 10 frames with highest change_score
-    if frames:
-        sorted_frames = sorted(
-            [fr for fr in frames if fr.get("change_score") is not None],
-            key=lambda x: x["change_score"],
-            reverse=True
-        )[:10]
-        for fr in sorted_frames:
-            frame_path = os.path.join(outdir, fr['file'])
-            if os.path.isfile(frame_path):
-                try:
-                    with open(frame_path, "rb") as fh:
-                        b64 = base64.b64encode(fh.read()).decode()
-                    p = fr.get("pointer")
-                    pointer_text = f"pointer {p['region']}" if p else "no pointer"
-                    content.append({
-                        "type": "text",
-                        "text": f"Frame at {fr['timestamp_hms']}, {pointer_text}"
-                    })
-                    content.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": b64
-                        }
-                    })
-                except Exception as e:
-                    eprint(f"[analyze] WARN: could not attach frame {fr['file']}: {e}")
-
-    msg = client.messages.create(
-        model=model,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": content}]
-    )
-
-    findings = next((b.text for b in msg.content if getattr(b, "type", None) == "text"), None)
-    if not findings:
-        eprint("ERROR: --analyze got no text back from the model")
-        return None
-
-    # Write findings to bug_report.md
-    report_path = os.path.join(outdir, "bug_report.md")
-    with open(report_path, "w") as f:
-        f.write("# Bug Report (Synthesized from Screen Recording)\n\n")
-        f.write(findings)
-        f.write("\n\n---\n")
-        f.write("*Generated by qa-digest --analyze*\n")
-
-    eprint(f"[analyze] ✓ bug_report.md written")
-    return report_path
+def run_doctor():
+    """--check: report every dependency and which interpreter has it."""
+    print("qa-digest dependency check")
+    print("  interpreter : %s" % sys.executable)
+    ok = True
+    for tool in ("ffmpeg", "ffprobe"):
+        path = shutil.which(tool)
+        print("  %-11s : %s" % (tool, path or "MISSING (brew install ffmpeg)"))
+        ok = ok and bool(path)
+    for mod, why in (("faster_whisper", "no transcript without it"),
+                     ("PIL", "diff selection + pointer need it"),
+                     ("numpy", "diff selection + pointer need it"),
+                     ("scenedetect", "optional; interval sampling without it")):
+        try:
+            __import__(mod)
+            print("  %-11s : ok" % mod)
+        except ImportError:
+            print("  %-11s : MISSING (%s)" % (mod, why))
+            if mod != "scenedetect":
+                ok = False
+    cfg_path = config_path()
+    print("  config      : %s%s" % (cfg_path,
+          "" if os.path.isfile(cfg_path) else " (not created yet)"))
+    print("  verdict     : %s" % ("ready" if ok else "NOT ready — fix the MISSING lines"))
+    return 0 if ok else 1
 
 
 def main():
     ap = argparse.ArgumentParser(description="Prepare a local video for Claude to digest.")
-    ap.add_argument("video", help="Path to the local video file")
+    ap.add_argument("video", nargs="?", help="Path to the local video file")
+    ap.add_argument("--check", action="store_true",
+                    help="Check dependencies and exit (no video needed)")
     ap.add_argument("--out", default=None, help="Output dir (default: <video>.digest)")
-    ap.add_argument("--model", default="small",
-                    help="Whisper size: tiny/base/small/medium/large-v3 (default small; tiny fabricates on long clips)")
+    ap.add_argument("--model", default=None,
+                    help="Whisper size: tiny/base/small/medium/large-v3 "
+                         "(default: saved config, else small; tiny fabricates on long clips)")
     ap.add_argument("--language", default=None, help="Force language code (e.g. en); default auto-detect")
     ap.add_argument("--compute-type", default="int8", help="faster-whisper compute type (default int8)")
     ap.add_argument("--max-frames", type=int, default=60, help="Max keyframes to export (default 60)")
@@ -681,11 +701,14 @@ def main():
     ap.add_argument("--no-report", action="store_true", help="Skip HTML report generation")
     ap.add_argument("--report", action="store_true",
                     help="Force HTML report generation (overrides a saved no_report config)")
-    ap.add_argument("--analyze", action="store_true", help="Synthesize a structured bug report from the digest (requires ANTHROPIC_API_KEY)")
-    ap.add_argument("--analyze-model", default="claude-haiku-4-5-20251001", help="Claude model for --analyze (default claude-haiku-4-5-20251001)")
     ap.add_argument("--json", action="store_true", help="Output JSON summary instead of human-readable text")
     ap.add_argument("--keep-audio", action="store_true", help="Keep the extracted wav")
     args = ap.parse_args()
+
+    if args.check:
+        sys.exit(run_doctor())
+    if not args.video:
+        ap.error("video is required (or use --check)")
 
     # Load or initialize config
     cfg = load_or_init_config()
@@ -708,6 +731,8 @@ def main():
     # Precedence: explicit CLI flag > saved config > built-in default.
     if args.mode is None:
         args.mode = cfg.get("mode", "standard")
+    if args.model is None:
+        args.model = cfg.get("model", "small")
     if args.report:
         args.no_report = False
     elif not args.no_report:
@@ -723,14 +748,20 @@ def main():
 
     video = os.path.abspath(args.video)
     if not os.path.isfile(video):
-        eprint(f"ERROR: file not found: {video}")
-        # The most common cause here is a filename with a narrow no-break space
-        # (U+202F) before "PM" in macOS screen-recording names — a literal path
-        # copied from a message won't match. Resolve with a glob or copy first.
-        eprint("       If this is a macOS 'Screen Recording ... PM.mov', the space before")
-        eprint("       'PM' may be U+202F. Resolve with a glob, e.g.:")
-        eprint("         f=$(ls *Recording*2.18*.mov); python3 qa_digest.py \"$f\"")
-        sys.exit(2)
+        resolved = resolve_space_variants(video)
+        if resolved:
+            eprint(f"[input] literal path not found; matched {os.path.basename(resolved)}")
+            eprint("        (macOS puts a narrow no-break space, U+202F, before 'PM')")
+            video = resolved
+        else:
+            eprint(f"ERROR: file not found: {video}")
+            eprint("       If this is a macOS 'Screen Recording ... PM.mov', the space before")
+            eprint("       'PM' may be U+202F. Resolve with a glob, e.g.:")
+            eprint("         f=$(ls *Recording*2.18*.mov); python3 qa_digest.py \"$f\"")
+            sys.exit(2)
+
+    # Serialise digests: concurrent runs have hung (see SKILL.md gotchas).
+    _lock = acquire_single_instance_lock()  # noqa: F841 — held until exit
 
     # Determine output directory: CLI arg > config default > <video>.digest
     if args.out:
@@ -778,6 +809,7 @@ def main():
             eprint("[audio] extracting...")
             extract_audio(video, wav)
             transcript = transcribe(wav, args.model, args.language, args.compute_type)
+            transcript = maybe_escalate_model(transcript, wav, args)
             if transcript is not None:
                 paths = write_transcript(outdir, transcript, meta)
                 manifest["transcript"] = {"language": transcript.get("language"),
@@ -883,19 +915,6 @@ def main():
                     outputs["clicks"] = clicks
         except Exception as e:
             eprint(f"WARN: enhanced output failed: {e}")
-
-    # --- analyze for bug findings (optional) ---
-    if args.analyze:
-        try:
-            if tr:
-                result = analyze_digest(outdir, tr, model=args.analyze_model, frames=manifest.get("frames"))
-                if result:
-                    outputs["bug_report"] = result
-            else:
-                eprint("WARN: --analyze requires transcript (no audio or --no-transcribe)")
-        except Exception as e:
-            eprint(f"WARN: --analyze failed: {e}")
-            eprint("      Set ANTHROPIC_API_KEY environment variable to use this feature")
 
     if args.json:
         # Output JSON summary

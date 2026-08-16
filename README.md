@@ -42,12 +42,23 @@ rsync -a --exclude '.git' --exclude '.DS_Store' \
   qa-digest/ ~/.claude/skills/qa-digest/
 ```
 
-Install the runtime deps once:
+Install the runtime deps once, then verify:
 
 ```bash
 brew install ffmpeg
 pip install Pillow numpy faster-whisper scenedetect
+python3 ~/.claude/skills/qa-digest/scripts/qa_digest.py --check
 ```
+
+`--check` prints each dependency's status and which Python has it — worth the
+five seconds, because a second interpreter missing `faster-whisper` fails
+silently (you get frames but no transcript).
+
+Quality guardrails are built in: if the literal file path misses because of
+macOS's narrow no-break space before "PM", the script resolves it and moves on;
+if more than 30% of transcript segments come back low-confidence, it re-runs
+transcription one model size up and keeps the better result; and concurrent
+digests queue behind a lock instead of hanging.
 
 Then tell Claude Code: **"digest this video: /path/to/clip.mov"** — or just hand
 it a screen recording and ask what happens.
@@ -56,14 +67,13 @@ it a screen recording and ask what happens.
 
 ```bash
 python3 scripts/qa_digest.py "/path/to/clip.mov" \
-  --out "/path/to/clip.digest" --model small --max-frames 25 --analyze
+  --out "/path/to/clip.digest" --model small --max-frames 25
 ```
 
 - `--model tiny|base|small|medium|large-v3` — accuracy vs. speed. `tiny` only safe
   for short (<~2 min) continuously-narrated clips; fabricates text otherwise.
   `small` is the safe default; bigger models slower but more accurate.
 - `--max-frames N` — keyframe cap (default 60).
-- `--analyze` — synthesize a structured bug report (needs `ANTHROPIC_API_KEY` env var).
 - `--no-frames` — transcript only, fast.
 - `--no-transcribe` — frames only (silent footage).
 - `--no-report` — skip the HTML report.
@@ -80,7 +90,6 @@ Every digest includes:
 - **digest.md** — transcript + keyframes woven by time. Read top-to-bottom; pointer + region marked inline on each frame. Includes "Unmatched frames" section for silent gaps and frames outside transcript segments.
 - **report.html** — self-contained HTML review (email-friendly, no external deps). Transcript on left, keyframes on right, pointer overlay. Shareable as-is. Also shows unmatched frames.
 - **transcript.md** — timestamped narration. Segments marked with `⚠️ low-confidence` may be misheard (low Whisper confidence); re-check those with a larger `--model` before quoting.
-- **bug_report.md** (with `--analyze`) — Claude-synthesized structured bug report: issue title, repro steps, expected/actual, affected areas, key timestamps. Ready to paste into GitHub.
 - **clicks.json** — detected click/action moments (small, localized changes). JSON list with frame index, estimated timestamp, and pointer region for each suspected interaction.
 
 **Reference outputs**:

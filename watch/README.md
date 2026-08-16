@@ -59,12 +59,10 @@ All settings live in `~/.qa-digest-watch.json`. Nothing is hardcoded —
 
 ### Digest options
 
-Mirror the `qa_digest.py` flags: `mode`, `model`, `max_frames`, `analyze`,
+Mirror the `qa_digest.py` flags: `mode`, `model`, `max_frames`,
 `no_report`, `no_transcribe`, `no_frames`, `language`. Anything not exposed
 goes in `extra_args` as a list, e.g. `["--frame-width", "800"]`.
 
-Set `analyze` to `true` only if `ANTHROPIC_API_KEY` is available to the launchd
-environment — launchd does not read your shell profile.
 
 `filename_mode_override` (default `true`) reads the mode out of the filename:
 `bug-repro.strict.mov` runs in `strict`. Lets you pick per-recording from the

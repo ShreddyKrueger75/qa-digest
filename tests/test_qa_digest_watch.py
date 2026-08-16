@@ -83,13 +83,15 @@ class TestBuildCommand(unittest.TestCase):
         self.assertEqual(outdir, "/out/clip.digest")
 
     def test_flags_are_passed_through(self):
-        cmd, _, _ = dw.build_command("/v/clip.mov", cfg(analyze=True,
-                                                        no_report=True))
-        self.assertIn("--analyze", cmd)
+        cmd, _, _ = dw.build_command("/v/clip.mov", cfg(no_report=True,
+                                                        no_transcribe=True))
         self.assertIn("--no-report", cmd)
+        self.assertIn("--no-transcribe", cmd)
 
     def test_flags_absent_when_disabled(self):
         cmd, _, _ = dw.build_command("/v/clip.mov", cfg())
+        self.assertNotIn("--no-report", cmd)
+        # --analyze was removed entirely (needed an API key)
         self.assertNotIn("--analyze", cmd)
 
     def test_extra_args_appended(self):

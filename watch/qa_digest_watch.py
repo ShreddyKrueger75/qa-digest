@@ -59,7 +59,6 @@ DEFAULTS = {
     "mode": "standard",
     "model": "small",
     "max_frames": 60,
-    "analyze": False,
     "no_report": False,
     "no_transcribe": False,
     "no_frames": False,
@@ -419,8 +418,6 @@ def build_command(path, cfg):
     ]
     if cfg.get("language"):
         cmd += ["--language", str(cfg["language"])]
-    if cfg["analyze"]:
-        cmd.append("--analyze")
     if cfg["no_report"]:
         cmd.append("--no-report")
     if cfg["no_transcribe"]:

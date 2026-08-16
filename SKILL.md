@@ -64,9 +64,8 @@ Then **read `<out>/transcript.md` first**, then view the frames listed in
 Flags that matter:
 - `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default standard).
 - `--no-report` — skip HTML report (frames + digest.md only).
-- `--analyze` — synthesize a structured bug report from the digest (requires
-  `ANTHROPIC_API_KEY`). Only needed for unattended runs — when Claude is in the
-  loop it reads `digest.md` and writes the findings itself, no key required.
+- `--check` — dependency doctor: reports ffmpeg/whisper/Pillow/numpy status
+  and which interpreter has them, then exits. Run it first on a new machine.
 - `--model tiny|base|small|medium|large-v3` — accuracy vs speed (default `base`); choose based on clip length and importance:
   - `tiny` — only for short clips (under ~2 minutes) with continuous narration. On longer or sparsely-narrated recordings it fabricates plausible-sounding text instead of failing.
   - `small` — the safe default for anything longer, and for anything where the narration is the point (bug reports, reviews).
@@ -178,12 +177,9 @@ Every digest now includes:
 - **clicks.json** — detects small, localized changes (likely click flashes or
   menu appearances). A JSON list of `{frame, ts, score, region, nx, ny}` per
   suspected action. For QA mode only; absent if no candidate clicks found.
-- **bug_report.md** (with `--analyze`) — Claude synthesizes a structured bug report:
-  issue title, steps to reproduce, expected/actual behavior, affected areas, and
-  key timestamps. Requires `ANTHROPIC_API_KEY` environment variable.
 
-The first three are auto-generated and graceful when transcript is absent (frames only).
-Bug report generation is opt-in via `--analyze`.
+All auto-generated and graceful when transcript is absent (frames only).
+Claude reads `digest.md` and writes the findings itself — no API key involved.
 
 ## Gotchas (learned the hard way)
 
