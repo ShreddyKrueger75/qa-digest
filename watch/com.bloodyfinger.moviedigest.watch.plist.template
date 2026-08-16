@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bloodyfinger.moviedigest.watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON_BIN__</string>
+    <string>__WATCHER__</string>
+    <string>--config</string>
+    <string>__CONFIG__</string>
+  </array>
+
+  <!-- Fire when the drop folder changes. -->
+  <key>WatchPaths</key>
+  <array>
+    <string>__WATCH_DIR__</string>
+  </array>
+
+  <!-- Safety net: iCloud can materialise a file without touching the
+       directory mtime, so also poll on an interval. -->
+  <key>StartInterval</key>
+  <integer>__INTERVAL__</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>Nice</key>
+  <integer>5</integer>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/movie-digest-watch.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/movie-digest-watch.err.log</string>
+</dict>
+</plist>
