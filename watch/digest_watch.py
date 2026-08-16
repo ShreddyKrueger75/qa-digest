@@ -264,7 +264,23 @@ def discover(cfg, log):
     archive = expand(cfg.get("archive_dir")) if cfg.get("archive_dir") else None
     found = []
 
-    walker = os.walk(root) if cfg["recursive"] else [(root, [], os.listdir(root))]
+    try:
+        listing = os.listdir(root)
+    except PermissionError:
+        # macOS TCC. A launchd agent has no Full Disk Access, so protected
+        # locations (iCloud Drive, Desktop, Documents, Downloads) are opaque to
+        # it even though they're readable from your shell. Crashing here on
+        # every interval just fills the log, so explain it and stop.
+        log.error("cannot read %s" % root)
+        log.error("macOS is blocking this (Full Disk Access). Either:")
+        log.error("  1. Grant Full Disk Access to %s in"
+                  % (cfg.get("python_bin") or sys.executable))
+        log.error("     System Settings > Privacy & Security > Full Disk Access, or")
+        log.error("  2. Point watch_dir at a folder outside iCloud Drive,")
+        log.error("     Desktop, Documents, and Downloads.")
+        raise SystemExit(3)
+
+    walker = os.walk(root) if cfg["recursive"] else [(root, [], listing)]
     for dirpath, dirnames, filenames in walker:
         # Never descend into digest output or the archive.
         dirnames[:] = [d for d in dirnames
