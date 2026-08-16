@@ -62,6 +62,8 @@ DEFAULTS = {
     "no_report": False,
     "no_transcribe": False,
     "no_frames": False,
+    # A changed source should replace the generated artifacts from its prior run.
+    "clean_output": True,
     "language": None,
     # Anything else you want passed straight through, e.g. ["--frame-width","800"]
     "extra_args": [],
@@ -424,6 +426,8 @@ def build_command(path, cfg):
         cmd.append("--no-transcribe")
     if cfg["no_frames"]:
         cmd.append("--no-frames")
+    if cfg.get("clean_output", True):
+        cmd.append("--clean-output")
     cmd += [str(a) for a in cfg.get("extra_args", [])]
     return cmd, outdir, mode
 

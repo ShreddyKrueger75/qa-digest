@@ -87,12 +87,17 @@ class TestBuildCommand(unittest.TestCase):
                                                         no_transcribe=True))
         self.assertIn("--no-report", cmd)
         self.assertIn("--no-transcribe", cmd)
+        self.assertIn("--clean-output", cmd)
 
     def test_flags_absent_when_disabled(self):
         cmd, _, _ = dw.build_command("/v/clip.mov", cfg())
         self.assertNotIn("--no-report", cmd)
         # --analyze was removed entirely (needed an API key)
         self.assertNotIn("--analyze", cmd)
+
+    def test_clean_output_can_be_disabled(self):
+        cmd, _, _ = dw.build_command("/v/clip.mov", cfg(clean_output=False))
+        self.assertNotIn("--clean-output", cmd)
 
     def test_extra_args_appended(self):
         cmd, _, _ = dw.build_command(
