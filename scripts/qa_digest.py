@@ -677,14 +677,14 @@ def prompt_config() -> dict:
     eprint("━━━ (1) Frame selection mode ━━━\n")
     eprint("How comprehensive should frame capture be?\n")
 
-    eprint("  INSANO — Forensic analysis")
+    eprint("  INSANO — Forensic analysis (DEFAULT)")
     eprint("    • 100+ frames per 2-min clip")
     eprint("    • Captures every pixel shift, cursor twitch, tiny adjustment")
     eprint("    • Use when: Debugging UX interactions pixel-by-pixel")
     eprint("    • Example: Testing a drag-and-drop interaction")
     eprint("")
 
-    eprint("  STRICT — Capture everything (DEFAULT)")
+    eprint("  STRICT — Capture everything")
     eprint("    • 20–40 frames per 2-min clip")
     eprint("    • Captures every parameter tweak, every menu click, every action")
     eprint("    • Strict adherence: nothing gets missed")
@@ -719,11 +719,11 @@ def prompt_config() -> dict:
     eprint("  (Frames are base64-encoded images; ~400 tokens per frame.)")
     eprint("  (Use lenient for cost-sensitive analysis; strict for detail.)\n")
 
-    eprint("  ➜ Pick one: i=insano, s=strict (default), t=standard, l=lenient")
+    eprint("  ➜ Pick one: i=insano (default), s=strict, t=standard, l=lenient")
     eprint("  ➜ Override later with: --mode insano|strict|standard|lenient\n")
-    mode_choice = input("  Enter your choice [default: s]: ").strip().lower()
+    mode_choice = input("  Enter your choice [default: i]: ").strip().lower()
     mode_map = {"i": "insano", "s": "strict", "t": "standard", "l": "lenient"}
-    mode = mode_map.get(mode_choice, "strict")
+    mode = mode_map.get(mode_choice, "insano")
     eprint(f"  ✓ {mode.upper()}\n")
 
     eprint("━━━ (2) Generate HTML report by default? ━━━\n")
@@ -899,7 +899,7 @@ def main():
     ap.add_argument("--sample-fps", type=positive_float, default=2.0,
                     help="Dense sample rate for diff mode (default 2/s)")
     ap.add_argument("--mode", choices=["insano", "strict", "standard", "lenient"], default=None,
-                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default standard, or saved config)")
+                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default insano, or saved config)")
     ap.add_argument("--diff-threshold", type=nonnegative_float, default=None,
                     help="Mean gray delta to count a frame as changed (overrides --mode; lower = more frames)")
     ap.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
@@ -925,7 +925,7 @@ def main():
             cfg = prompt_config()
         else:
             # Non-interactive: use defaults and write to config file
-            cfg = {"mode": "standard", "no_report": False}
+            cfg = {"mode": "insano", "no_report": False}
             try:
                 os.makedirs(os.path.dirname(config_path()), exist_ok=True)
                 with open(config_path(), "w") as f:
@@ -938,7 +938,7 @@ def main():
 
     # Precedence: explicit CLI flag > saved config > built-in default.
     if args.mode is None:
-        args.mode = cfg.get("mode", "standard")
+        args.mode = cfg.get("mode", "insano")
     if args.model is None:
         args.model = cfg.get("model", "small")
     if args.report:

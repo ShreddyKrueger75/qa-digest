@@ -50,7 +50,7 @@ On first run in an interactive terminal, the script prompts for four defaults:
 
 Your choices save to `~/.qa-digest.json` — reconfigure anytime by deleting that file.
 
-Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `standard`, HTML report on) without prompting.
+Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `insano`, HTML report on) without prompting.
 
 ## Run (the one path)
 
@@ -75,8 +75,8 @@ for a shareable visual report:
 
 ```bash
 python3 scripts/qa_digest.py "/path/to/CLIP.mov" \
-  --out "/path/to/CLIP.digest" --model small --mode standard \
-  --max-frames 20 --sample-fps 2 --no-report --clean-output --json
+  --out "/path/to/CLIP.digest" --model small --mode insano \
+  --max-frames 60 --sample-fps 2 --no-report --clean-output --json
 ```
 
 For a quick, non-authoritative triage pass, use `--model base --mode lenient
@@ -144,7 +144,7 @@ Stop when either:
 
 If narration is the uncertainty, use the transcript confidence markers and the
 script's model escalation. If the screen state is the uncertainty, rerun with
-`--mode strict --max-frames 30` only for that recording. Do not rerun the full
+`--mode insano --max-frames 120` only for that recording. Do not rerun the full
 pipeline merely to reread evidence already seen.
 
 ### Pass 4 — finalize without inventing evidence
@@ -156,7 +156,7 @@ numbered issue list and wait for the user to choose before running
 `file_issues.py`; use `--dry-run` before any real filing.
 
 Flags that matter:
-- `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default standard).
+- `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default insano).
 - `--no-report` — skip HTML report (frames + digest.md only).
 - `--check` — dependency doctor: reports ffmpeg/whisper/Pillow/numpy status
   and which interpreter has them, then exits. Run it first on a new machine.
@@ -165,8 +165,8 @@ Flags that matter:
   - `small` — the safe default for anything longer, and for anything where the narration is the point (bug reports, reviews).
   - Bigger models (`base`, `medium`, `large-v3`) = slower but more accurate. Use `base` for a real film or when a transcript reads like nonsense — re-run with a larger model before acting on it.
   - Segments marked `⚠️ low-confidence` in transcript.md have low Whisper confidence and may be misheard — re-check with a larger model before quoting.
-- `--max-frames N` — cap on keyframes (default 60; 12–20 for a short clip).
-- `--diff-threshold N` — override mode's threshold (lower = more frames, default 1.5 for standard).
+- `--max-frames N` — cap on keyframes (default 60; use 12–20 only for a deliberately capped triage pass).
+- `--diff-threshold N` — override mode's threshold (lower = more frames; default 0.2 for insano, 1.5 for standard).
 - `--no-dedup` — turn OFF diff selection + pointer; use plain interval/scene
   sampling instead.
 - `--no-frames` — transcript only, fast. Use when you only need the narration.
