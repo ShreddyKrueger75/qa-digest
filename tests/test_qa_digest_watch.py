@@ -24,6 +24,9 @@ def cfg(**overrides):
 
 
 class TestDeepMerge(unittest.TestCase):
+    def test_default_mode_is_insano(self):
+        self.assertEqual(dw.DEFAULTS["mode"], "insano")
+
     def test_scalar_override(self):
         self.assertEqual(cfg(mode="strict")["mode"], "strict")
 

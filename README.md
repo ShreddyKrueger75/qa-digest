@@ -60,10 +60,10 @@ if more than 30% of transcript segments come back low-confidence, it re-runs
 transcription one model size up and keeps the better result; and concurrent
 digests queue behind a lock instead of hanging.
 
-For efficient agent runs, use `--no-report --json --max-frames 20` and follow
-the bounded evidence loop in `SKILL.md`: inspect the transcript and manifest
-first, then use `scripts/evidence_queue.py` to open only frames that can change
-the conclusion.
+For efficient agent runs, use `--mode insano --no-report --json` and follow the
+bounded evidence loop in `SKILL.md`: inspect the transcript and manifest first,
+then use `scripts/evidence_queue.py` to open only frames that can change the
+conclusion.
 
 Diff sampling is streaming: ffmpeg sends the dense sample through a pipe and
 qa-digest encodes only the keyframes that survive selection. Intermediate
@@ -112,9 +112,9 @@ Every digest includes:
 
 `--mode insano|strict|standard|lenient` — tune how comprehensive frame capture is.
 
-- **`insano`** — every single change. 100+ frames per 2-min clip. For forensic analysis of every interaction, cursor twitch, pixel shift.
+- **`insano`** (default) — every single change. 100+ frames per 2-min clip. For forensic analysis of every interaction, cursor twitch, pixel shift.
 - **`strict`** — capture everything. 20–40 frames per 2-min clip. Strict adherence to what you said/did; nothing missed. For detailed walkthroughs and parameter-level specs.
-- **`standard`** (default) — balanced. 10–20 frames per 2-min clip. Catches blocks placed, menus opened, dialogs appeared.
+- **`standard`** — balanced. 10–20 frames per 2-min clip. Catches blocks placed, menus opened, dialogs appeared.
 - **`lenient`** — landmark moments only. 5–10 frames per 2-min clip. For high-level demos or quick reviews where you only need major state shifts.
 
 All modes keep the pointer and change-score columns, digest.md, and report.html. Only the number of kept frames changes.
