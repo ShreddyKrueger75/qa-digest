@@ -664,7 +664,12 @@ def prompt_config() -> dict:
     eprint("║         qa-digest: First-Run Configuration              ║")
     eprint("║     Built by ShreddyKrueger75 / Bloody Finger Software     ║")
     eprint("╚════════════════════════════════════════════════════════════╝\n")
-    eprint("Welcome to qa-digest! This tool does four things:")
+    eprint("Welcome to qa-digest.")
+    eprint("qa-digest is a local-only QA tool for narrated screen recordings.")
+    eprint("It transcribes the audio, extracts meaningful keyframes, and produces")
+    eprint("a timestamped digest so visual bugs can be verified against what was said.")
+    eprint("It does not upload recordings or file issues unless explicitly requested.\n")
+    eprint("This setup will ask for four defaults. qa-digest then:")
     eprint("  1. Transcribes your video's audio (what you said)")
     eprint("  2. Extracts keyframes (what changed on screen)")
     eprint("  3. Localizes pointers (where you clicked/interacted)")
@@ -719,11 +724,11 @@ def prompt_config() -> dict:
     eprint("  (Frames are base64-encoded images; ~400 tokens per frame.)")
     eprint("  (Use lenient for cost-sensitive analysis; strict for detail.)\n")
 
-    eprint("  ➜ Pick one: i=insano (default), s=strict, t=standard, l=lenient")
+    eprint("  ➜ Pick one: i=insano, s=strict, t=standard (default), l=lenient")
     eprint("  ➜ Override later with: --mode insano|strict|standard|lenient\n")
-    mode_choice = input("  Enter your choice [default: i]: ").strip().lower()
+    mode_choice = input("  Enter your choice [default: t]: ").strip().lower()
     mode_map = {"i": "insano", "s": "strict", "t": "standard", "l": "lenient"}
-    mode = mode_map.get(mode_choice, "insano")
+    mode = mode_map.get(mode_choice, "standard")
     eprint(f"  ✓ {mode.upper()}\n")
 
     eprint("━━━ (2) Generate HTML report by default? ━━━\n")
@@ -899,7 +904,7 @@ def main():
     ap.add_argument("--sample-fps", type=positive_float, default=2.0,
                     help="Dense sample rate for diff mode (default 2/s)")
     ap.add_argument("--mode", choices=["insano", "strict", "standard", "lenient"], default=None,
-                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default insano, or saved config)")
+                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default standard, or saved config)")
     ap.add_argument("--diff-threshold", type=nonnegative_float, default=None,
                     help="Mean gray delta to count a frame as changed (overrides --mode; lower = more frames)")
     ap.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
@@ -925,7 +930,7 @@ def main():
             cfg = prompt_config()
         else:
             # Non-interactive: use defaults and write to config file
-            cfg = {"mode": "insano", "no_report": False}
+            cfg = {"mode": "standard", "no_report": False}
             try:
                 os.makedirs(os.path.dirname(config_path()), exist_ok=True)
                 with open(config_path(), "w") as f:
@@ -938,7 +943,7 @@ def main():
 
     # Precedence: explicit CLI flag > saved config > built-in default.
     if args.mode is None:
-        args.mode = cfg.get("mode", "insano")
+        args.mode = cfg.get("mode", "standard")
     if args.model is None:
         args.model = cfg.get("model", "small")
     if args.report:

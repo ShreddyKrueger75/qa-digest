@@ -1,27 +1,32 @@
 # qa-digest
 
-A [Claude Code](https://claude.com/claude-code) **skill** that lets Claude
-**watch and digest a local video file** — by transcribing its audio and
-exporting keyframes, so the model can actually read what happens. I developed
-it as part of [The Ad Bench](https://theadbench.ai), my creative scoring
-platform.
+`qa-digest` is a local-only QA tool for narrated screen recordings. It
+transcribes the audio, extracts meaningful keyframes, and produces a
+timestamped digest so visual bugs can be verified against what was said. It
+does not upload recordings or file issues unless explicitly requested.
 
-Claude can't decode video or hear audio. This skill splits the work:
+A [Claude Code](https://claude.com/claude-code) **skill** for reviewing local
+video files. It transcribes the audio and exports keyframes so Claude can read
+what happened. I developed it as part of [The Ad Bench](https://theadbench.ai),
+my creative scoring platform.
+
+For Codex installation and usage, see [README.codex.md](README.codex.md).
+
+Claude cannot decode video or hear audio, so the skill splits the work:
 
 - `scripts/qa_digest.py` transcribes the spoken dialogue with timestamps
   (faster-whisper) and exports keyframes.
-- **Optimized for QA / bug-report recordings.** By default it keeps only the
-  frames that *changed* (diff-based selection — no more 20 duplicate frames of a
-  static screen) and localizes the **pointer** on each: where the screen changed
-  vs the previous frame ≈ where the cursor / action was. A failure often shows as
-  the *absence* of change. `--no-dedup` restores plain scene/interval sampling.
+- **Optimized for QA and bug-report recordings.** By default it keeps only the
+  frames that *changed*. This avoids sending 20 duplicate views of a static
+  screen and estimates the **pointer** location from the changed area. A
+  failure can show up as the *absence* of change. `--no-dedup` restores plain
+  scene or interval sampling.
 - Claude then reads `transcript.md` and views the frames to write a structured
   digest.
 
-**The audio is the point.** A narrated screen recording — someone talking
-through a bug or reviewing a UI — is nearly useless as frames alone; the actual
-report is in the voice. Transcribe first, read the transcript, *then* look at
-the frames.
+**Audio matters most for narrated recordings.** Frames alone tell you little
+when someone is talking through a bug or reviewing a UI. The report is in the
+voice. Transcribe first, read the transcript, *then* look at the frames.
 
 ## Install as a skill
 
@@ -34,8 +39,9 @@ rm -rf ~/.claude/skills/qa-digest/.git
 # or, per-project: clone into <project>/.claude/skills/qa-digest
 ```
 
-Already have a checkout? Copy it without the repo metadata — a plain `cp -R`
-drags `.git` along, which is most of the installed size and none of the use:
+Already have a checkout? Copy it without the repo metadata. A plain `cp -R`
+also copies `.git`, which adds most of the installed size without helping the
+installed skill:
 
 ```bash
 rsync -a --exclude '.git' --exclude '.DS_Store' \
@@ -50,28 +56,29 @@ pip install Pillow numpy faster-whisper scenedetect
 python3 ~/.claude/skills/qa-digest/scripts/qa_digest.py --check
 ```
 
-`--check` prints each dependency's status and which Python has it — worth the
-five seconds, because a second interpreter missing `faster-whisper` fails
-silently (you get frames but no transcript).
+`--check` prints each dependency's status and the Python interpreter that has it.
+Run it when more than one interpreter is installed. If the selected interpreter
+does not have `faster-whisper`, the script continues with frames but no
+transcript.
 
-Quality guardrails are built in: if the literal file path misses because of
-macOS's narrow no-break space before "PM", the script resolves it and moves on;
-if more than 30% of transcript segments come back low-confidence, it re-runs
-transcription one model size up and keeps the better result; and concurrent
-digests queue behind a lock instead of hanging.
+The script handles several common failure cases. If macOS uses a narrow no-break
+space before "PM" and the literal path misses, it resolves the path. If more
+than 30% of transcript segments have low confidence, it reruns transcription
+with the next larger model and keeps the better result. Concurrent digests wait
+behind a lock instead of hanging.
 
-For efficient agent runs, use `--mode insano --no-report --json` and follow the
+For efficient agent runs, use `--mode standard --no-report --json` and follow the
 bounded evidence loop in `SKILL.md`: inspect the transcript and manifest first,
 then use `scripts/evidence_queue.py` to open only frames that can change the
 conclusion.
 
-Diff sampling is streaming: ffmpeg sends the dense sample through a pipe and
-qa-digest encodes only the keyframes that survive selection. Intermediate
-sampled JPEGs are not written to disk, so longer or higher-resolution clips
-avoid the old write/read/copy cycle.
+Diff sampling is streaming. ffmpeg sends the dense sample through a pipe, and
+qa-digest encodes only the keyframes that survive selection. It does not write
+intermediate sampled JPEGs to disk, which avoids the old write, read, and copy
+cycle on longer or higher-resolution clips.
 
-Then tell Claude Code: **"digest this video: /path/to/clip.mov"** — or just hand
-it a screen recording and ask what happens.
+Then tell Claude Code: **"digest this video: /path/to/clip.mov"**. You can also
+hand it a screen recording and ask what happens.
 
 ## Run the script directly
 
@@ -80,97 +87,100 @@ python3 scripts/qa_digest.py "/path/to/clip.mov" \
   --out "/path/to/clip.digest" --model small --max-frames 25
 ```
 
-- `--model tiny|base|small|medium|large-v3` — accuracy vs. speed. `tiny` only safe
-  for short (<~2 min) continuously-narrated clips; fabricates text otherwise.
-  `small` is the safe default; bigger models slower but more accurate.
-- `--max-frames N` — keyframe cap (default 60).
-- `--no-frames` — transcript only, fast.
-- `--no-transcribe` — frames only (silent footage).
-- `--no-report` — skip the HTML report.
-- `--clean-output` — clear qa-digest artifacts before rerunning into an existing output directory.
+- `--model tiny|base|small|medium|large-v3`: accuracy versus speed. `tiny` is
+  safe only for short (<~2 min) continuously narrated clips and can fabricate
+  text otherwise. `small` is the safe default. Bigger models are slower but
+  more accurate.
+- `--max-frames N`: keyframe cap (default 60).
+- `--no-frames`: transcript only, fast.
+- `--no-transcribe`: frames only (silent footage).
+- `--no-report`: skip the HTML report.
+- `--clean-output`: clear qa-digest artifacts before rerunning into an existing output directory.
 
-See `SKILL.md` for the full agent workflow, all flags, and the gotchas
-(macOS narrow-space filenames, `tiny` mishearings, the scenedetect/OpenCV
-fallback).
+See `SKILL.md` for the full agent workflow, all flags, and details about
+macOS narrow-space filenames, `tiny` mishearings, and the scenedetect/OpenCV
+fallback.
 
 ## What you get
 
 Every digest includes:
 
-**Primary outputs** (the QA workflow):
-- **digest.md** — transcript + keyframes woven by time. Read top-to-bottom; pointer + region marked inline on each frame. Includes "Unmatched frames" section for silent gaps and frames outside transcript segments.
-- **report.html** — self-contained HTML review (email-friendly, no external deps). Transcript on left, keyframes on right, pointer overlay. Shareable as-is. Also shows unmatched frames.
-- **transcript.md** — timestamped narration. Segments marked with `⚠️ low-confidence` may be misheard (low Whisper confidence); re-check those with a larger `--model` before quoting.
-- **clicks.json** — detected click/action moments (small, localized changes). JSON list with frame index, estimated timestamp, and pointer region for each suspected interaction.
+**Primary outputs** for the QA workflow:
+- **digest.md**: transcript and keyframes woven together by time. Read it from top to bottom. Each frame includes pointer and region information. It also has an "Unmatched frames" section for silent gaps and frames outside transcript segments.
+- **report.html**: self-contained HTML review with no external dependencies. The transcript is on the left, keyframes are on the right, and the pointer is overlaid. It also shows unmatched frames.
+- **transcript.md**: timestamped narration. Segments marked with `⚠️ low-confidence` may be misheard. Re-check them with a larger `--model` before quoting them.
+- **clicks.json**: detected click or action moments based on small, localized changes. The JSON list includes a frame index, estimated timestamp, and pointer region for each suspected interaction.
 
 **Reference outputs**:
-- **frames_index.md** — pointer + change-score table for every kept frame. Glanceable; tells you where to look before opening an image.
-- **transcript files** — `.md`, `.srt`, `.json` for grepping, remixing, or feeding to other tools.
-- **manifest.json** — metadata, frame list with pointers, and transcript paths.
+- **frames_index.md**: pointer and change-score table for every kept frame. Use it to decide where to look before opening an image.
+- **transcript files**: `.md`, `.srt`, and `.json` files for grepping, remixing, or feeding to other tools.
+- **manifest.json**: metadata, the frame list with pointers, and transcript paths.
 
-## Modes — diff-threshold presets
+## Modes: diff-threshold presets
 
-`--mode insano|strict|standard|lenient` — tune how comprehensive frame capture is.
+`--mode insano|strict|standard|lenient`: controls how comprehensive frame capture is.
 
-- **`insano`** (default) — every single change. 100+ frames per 2-min clip. For forensic analysis of every interaction, cursor twitch, pixel shift.
-- **`strict`** — capture everything. 20–40 frames per 2-min clip. Strict adherence to what you said/did; nothing missed. For detailed walkthroughs and parameter-level specs.
-- **`standard`** — balanced. 10–20 frames per 2-min clip. Catches blocks placed, menus opened, dialogs appeared.
-- **`lenient`** — landmark moments only. 5–10 frames per 2-min clip. For high-level demos or quick reviews where you only need major state shifts.
+- **`insano`**: every change. It produces 100+ frames per 2-min clip for forensic analysis of interactions, cursor movement, and pixel shifts.
+- **`strict`**: 20-40 frames per 2-min clip for detailed walkthroughs and parameter-level specs.
+- **`standard`** (default): 10-20 frames per 2-min clip. It catches blocks being placed, menus opening, and dialogs appearing.
+- **`lenient`**: 5-10 frames per 2-min clip for high-level demos or reviews that need only the major state changes.
 
-All modes keep the pointer and change-score columns, digest.md, and report.html. Only the number of kept frames changes.
+All modes keep the pointer and change-score columns, `digest.md`, and
+`report.html`. Only the number of kept frames changes.
 
 ## File the bugs as GitHub issues
 
-Run it from inside the project you're QA'ing. Claude reads the digest, lists
-the bugs it found as one-line summaries, you pick which ones are real, and it
-files them:
+Run this from the project you are QA'ing. Claude reads the digest and lists
+the bugs it finds as one-line summaries. You choose which ones are real, then
+it files them:
 
 ```bash
 python3 scripts/file_issues.py --digest "/path/to/CLIP.digest" --issues bugs.json --dry-run
 python3 scripts/file_issues.py --digest "/path/to/CLIP.digest" --issues bugs.json
 ```
 
-The repo comes from the current directory's git remote. Override with
+The repository comes from the current directory's git remote. Override it with
 `--repo owner/name`.
 
-Keyframes referenced by a bug get pushed to an orphan `qa-assets` branch and
-linked as raw URLs in the issue body. GitHub's REST API can't attach images to
-an issue the way the web UI can, so this is the workaround. The branch shares no
-history with your code.
+Keyframes referenced by a bug are pushed to an orphan `qa-assets` branch and
+linked as raw URLs in the issue body. GitHub's REST API cannot attach images to
+an issue the way the web UI can, so the script uses this workaround. The branch
+shares no history with your code.
 
-On a private repo those raw URLs need auth, so the images only render for people
-signed in with access. The script detects that and says so in the issue.
+On a private repository, those raw URLs need authentication. The images render
+only for people who have signed-in access. The script detects this and says so
+in the issue.
 
-Needs the `gh` CLI authenticated with `repo` scope. No token is stored anywhere.
+The `gh` CLI must be authenticated with `repo` scope. The script does not store
+a token.
 
-## Walk-away mode: watch a folder
+## Folder watch mode
 
 `watch/` installs a launchd agent that digests anything dropped into a folder.
-Point it at a synced folder and you can hand it a recording from an iPad and get
-the report back without touching the Mac.
+Point it at a synced folder to process an iPad recording without touching the
+Mac.
 
 ```bash
 cd watch && ./install.sh
 ```
 
-One caveat worth knowing before you try it: macOS blocks background agents from
-reading iCloud Drive, Google Drive, and anything else under
-`~/Library/CloudStorage`. Either grant Full Disk Access to the interpreter or
-watch a folder outside those locations. See `watch/README.md`.
+macOS blocks background agents from reading iCloud Drive, Google Drive, and
+anything else under `~/Library/CloudStorage`. Grant Full Disk Access to the
+interpreter, or watch a folder outside those locations. See `watch/README.md`.
 
 ## Requirements
 
-- `ffmpeg` + `ffprobe` on PATH — required.
-- `faster-whisper` — optional (no transcript without it).
-- `scenedetect` — optional (interval frame sampling without it).
+- `ffmpeg` + `ffprobe` on PATH: required.
+- `faster-whisper`: optional. Without it, there is no transcript.
+- `scenedetect`: optional. Without it, the script uses interval frame sampling.
 
 ## Notes
 
-- **Local files only.** DRM-protected streaming (Netflix, etc.) can't be
+- **Local files only.** DRM-protected streaming (Netflix, etc.) cannot be
   captured.
-- Silent footage → `transcript.md` has 0 segments (expected); the digest leans
-  on the frames.
-- Cost and time scale with `--max-frames` and Whisper `--model` size.
+- For silent footage, `transcript.md` has 0 segments, as expected. The digest
+  relies on the frames.
+- Cost and processing time scale with `--max-frames` and Whisper `--model` size.
 
 ## Development
 
@@ -181,12 +191,12 @@ bash scripts/ci.sh
 ```
 
 The local CI runner checks Python compilation and the unit suite. The tests
-cover the pure logic (timestamp formatting, frame selection, pointer math,
-click detection, markdown emitters) — no video download or Whisper model is
-needed.
+cover the pure logic: timestamp formatting, frame selection, pointer math,
+click detection, and markdown emitters. They do not need a video download or a
+Whisper model.
 
 ## License
 
-MIT — see `LICENSE`.
+MIT. See `LICENSE`.
 
 Built by Bloody Finger Software.
