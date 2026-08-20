@@ -67,7 +67,7 @@ than 30% of transcript segments have low confidence, it reruns transcription
 with the next larger model and keeps the better result. Concurrent digests wait
 behind a lock instead of hanging.
 
-For efficient agent runs, use `--mode insano --no-report --json` and follow the
+For efficient agent runs, use `--mode standard --no-report --json` and follow the
 bounded evidence loop in `SKILL.md`: inspect the transcript and manifest first,
 then use `scripts/evidence_queue.py` to open only frames that can change the
 conclusion.

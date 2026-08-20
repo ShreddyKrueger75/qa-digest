@@ -904,7 +904,7 @@ def main():
     ap.add_argument("--sample-fps", type=positive_float, default=2.0,
                     help="Dense sample rate for diff mode (default 2/s)")
     ap.add_argument("--mode", choices=["insano", "strict", "standard", "lenient"], default=None,
-                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default insano, or saved config)")
+                    help="Diff threshold preset: insano (100+), strict (20–40), standard (10–20), lenient (5–10) per 2-min clip (default standard, or saved config)")
     ap.add_argument("--diff-threshold", type=nonnegative_float, default=None,
                     help="Mean gray delta to count a frame as changed (overrides --mode; lower = more frames)")
     ap.add_argument("--no-transcribe", action="store_true", help="Skip transcription")
@@ -930,7 +930,7 @@ def main():
             cfg = prompt_config()
         else:
             # Non-interactive: use defaults and write to config file
-            cfg = {"mode": "insano", "no_report": False}
+            cfg = {"mode": "standard", "no_report": False}
             try:
                 os.makedirs(os.path.dirname(config_path()), exist_ok=True)
                 with open(config_path(), "w") as f:
@@ -943,7 +943,7 @@ def main():
 
     # Precedence: explicit CLI flag > saved config > built-in default.
     if args.mode is None:
-        args.mode = cfg.get("mode", "insano")
+        args.mode = cfg.get("mode", "standard")
     if args.model is None:
         args.model = cfg.get("model", "small")
     if args.report:

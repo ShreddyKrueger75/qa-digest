@@ -57,7 +57,7 @@ On first run in an interactive terminal, the script prompts for four defaults:
 
 Your choices save to `~/.qa-digest.json` — reconfigure anytime by deleting that file.
 
-Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `insano`, HTML report on) without prompting.
+Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `standard`, HTML report on) without prompting.
 
 ## Run (the one path)
 
@@ -82,7 +82,7 @@ for a shareable visual report:
 
 ```bash
 python3 scripts/qa_digest.py "/path/to/CLIP.mov" \
-  --out "/path/to/CLIP.digest" --model small --mode insano \
+  --out "/path/to/CLIP.digest" --model small --mode standard \
   --max-frames 60 --sample-fps 2 --no-report --clean-output --json
 ```
 
@@ -163,7 +163,7 @@ numbered issue list and wait for the user to choose before running
 `file_issues.py`; use `--dry-run` before any real filing.
 
 Flags that matter:
-- `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default insano).
+- `--mode insano|strict|standard|lenient` — frame selection comprehensiveness (default standard).
 - `--no-report` — skip HTML report (frames + digest.md only).
 - `--check` — dependency doctor: reports ffmpeg/whisper/Pillow/numpy status
   and which interpreter has them, then exits. Run it first on a new machine.

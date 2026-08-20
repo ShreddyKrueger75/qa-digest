@@ -56,7 +56,7 @@ DEFAULTS = {
     "digest_timeout_seconds": 3600,
 
     # --- digest options (mirror qa_digest.py flags) ---------------------
-    "mode": "insano",
+    "mode": "standard",
     "model": "small",
     "max_frames": 60,
     "no_report": False,
@@ -382,7 +382,7 @@ def ensure_digest_config(log):
     if os.path.isfile(path):
         return
     with open(path, "w") as fh:
-        json.dump({"mode": "insano", "no_report": False}, fh, indent=2)
+        json.dump({"mode": "standard", "no_report": False}, fh, indent=2)
     log.info("seeded %s so the digest script won't prompt" % path)
 
 
