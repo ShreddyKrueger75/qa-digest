@@ -59,6 +59,31 @@ Your choices save to `~/.qa-digest.json` — reconfigure anytime by deleting tha
 
 Non-interactive runs (e.g., Claude running the script) auto-write defaults (mode `standard`, HTML report on) without prompting.
 
+## First use: explain the tool to the user
+
+Many users install the skill and then don't know what to say to it. Explain it
+in these cases:
+
+- `~/.qa-digest.json` does not exist yet. That means this is the first digest
+  on this machine. Check this **before** running the script, because the run
+  creates the file.
+- The user invokes the skill without a video path.
+- The user asks how it works, what it does, or how to use it.
+
+Run `python3 scripts/qa_digest.py --usage` and pass the guide on in a few short
+lines of your own:
+
+1. Record the screen and narrate it out loud. The narration is the bug report.
+2. Ask: "digest this video: /path/to/clip.mov".
+3. A `<clip>.digest/` folder appears next to the video. It holds `digest.md`,
+   `report.html` (shareable), the transcript, and the keyframes.
+4. Say "file these as issues" from the project folder to turn findings into
+   GitHub issues. Nothing is filed until the user picks which bugs are real.
+
+On a first run with a video, add the short explanation **after** delivering the
+digest, not before. Don't make the user wait on it. Mention it only once per
+conversation.
+
 ## Run (the one path)
 
 ```bash

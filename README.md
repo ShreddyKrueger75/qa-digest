@@ -30,6 +30,29 @@ voice. Transcribe first, read the transcript, *then* look at the frames.
 
 ## Install as a skill
 
+The quickest way is to clone the repo and run the installer:
+
+```bash
+git clone --depth 1 https://github.com/ShreddyKrueger75/qa-digest
+cd qa-digest && ./install.sh          # Claude Code
+# ./install.sh --codex                # Codex
+# ./install.sh --dest <project>/.claude/skills/qa-digest   # per-project
+```
+
+The installer copies only the files the skill needs and checks its
+dependencies. If anything is missing, it says what to install. It ends with a
+plain-language guide on how to use the skill. You can print that guide again
+anytime:
+
+```bash
+python3 ~/.claude/skills/qa-digest/scripts/qa_digest.py --usage
+```
+
+The first time you ask Claude to digest a video, it also explains the
+workflow briefly after delivering the results.
+
+### Manual install
+
 Clone straight into your Claude Code skills directory:
 
 ```bash
@@ -96,6 +119,8 @@ python3 scripts/qa_digest.py "/path/to/clip.mov" \
 - `--no-transcribe`: frames only (silent footage).
 - `--no-report`: skip the HTML report.
 - `--clean-output`: clear qa-digest artifacts before rerunning into an existing output directory.
+- `--json`: print a machine-readable summary listing every output file that exists.
+- `--usage`: print the how-to-use guide.
 
 See `SKILL.md` for the full agent workflow, all flags, and details about
 macOS narrow-space filenames, `tiny` mishearings, and the scenedetect/OpenCV
@@ -191,8 +216,9 @@ bash scripts/ci.sh
 ```
 
 The local CI runner checks Python compilation and the unit suite. The tests
-cover the pure logic: timestamp formatting, frame selection, pointer math,
-click detection, and markdown emitters. They do not need a video download or a
+cover the pure logic (timestamp formatting, frame selection, pointer math,
+click detection, markdown emitters) plus the installer, and run one end-to-end
+digest of a synthetic ffmpeg clip when ffmpeg is installed. Nothing needs a video download or a
 Whisper model.
 
 ## License

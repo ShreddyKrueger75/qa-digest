@@ -550,12 +550,37 @@ def detect_clicks(outdir: str, frames: list):
             clicks.append({"frame": fr["index"], "ts": fr["timestamp_seconds"],
                            "score": score, "region": p["region"],
                            "nx": p["nx"], "ny": p["ny"]})
-    if clicks:
-        path = os.path.join(outdir, "clicks.json")
-        with open(path, "w") as f:
-            json.dump(clicks, f, indent=2)
-        return path
-    return None
+    # Always write the file (an empty list when nothing qualified) so downstream
+    # readers can tell "no clicks found" apart from "detection never ran".
+    path = os.path.join(outdir, "clicks.json")
+    with open(path, "w") as f:
+        json.dump(clicks, f, indent=2)
+    return path
+
+
+def build_json_summary(outdir: str, manifest: dict, outputs: dict) -> dict:
+    """--json payload: every file an agent may want to open, plus run counts.
+
+    Only paths that exist on disk are listed, so a caller can open any of them
+    without checking first.
+    """
+    files = {k: v for k, v in outputs.items() if k != "manifest" and v}
+    tr = manifest.get("transcript") or {}
+    for key in ("transcript_md", "transcript_srt", "transcript_json"):
+        if tr.get(key):
+            files[key] = tr[key]
+    if manifest.get("frames_index_md"):
+        files["frames_index"] = manifest["frames_index_md"]
+    files = {k: v for k, v in files.items() if os.path.isfile(v)}
+    return {
+        "output_dir": outdir,
+        "manifest": os.path.join(outdir, "manifest.json"),
+        "duration_seconds": (manifest.get("meta") or {}).get("duration"),
+        "frame_count": len(manifest.get("frames") or []),
+        "scene_source": manifest.get("scene_source"),
+        "transcript_segments": tr.get("segment_count", 0),
+        "outputs": files,
+    }
 
 
 def emit_html_report(outdir: str, transcript: dict, frames: list, meta: dict):
@@ -647,6 +672,43 @@ def clean_generated_output(outdir: str):
                     os.unlink(path)
 
 
+QUICKSTART = """\
+How to use qa-digest
+━━━━━━━━━━━━━━━━━━━━
+1. Record your screen and talk through what you see
+   ("I click Save, and nothing happens"). The narration is the bug report.
+
+2. Ask your agent, in plain words:
+     Claude Code:  "digest this video: /path/to/clip.mov"
+     Codex:        $qa-digest  then  "Digest /path/to/clip.mov"
+   Other phrasings work too: "watch this recording", "what happens in this
+   clip?", "find the bugs in this screen recording".
+
+3. You get a <clip>.digest/ folder next to the video:
+     digest.md        transcript + keyframes woven together by time
+     report.html      shareable review page (open it in a browser)
+     transcript.md    timestamped narration
+     frames/          the keyframes that changed
+     clicks.json      suspected clicks / actions
+
+4. Want the bugs as GitHub issues? From the project's folder, say
+   "file these as issues". You pick which bugs are real before anything is filed.
+
+Handy options (run the script directly, or ask your agent to use them):
+  --mode lenient|standard|strict|insano   fewer ↔ more frames (default standard)
+  --model base|small|medium               transcript speed ↔ accuracy (default small)
+  --no-report                             skip report.html
+  --check                                 re-check dependencies
+
+Settings live in ~/.qa-digest.json (delete it to redo first-run setup).
+Show this guide again: python3 <skill folder>/scripts/qa_digest.py --usage
+"""
+
+
+def print_quickstart(stream=None):
+    print(QUICKSTART, file=stream or sys.stdout, end="")
+
+
 def load_or_init_config() -> dict:
     path = config_path()
     if os.path.isfile(path):
@@ -682,7 +744,7 @@ def prompt_config() -> dict:
     eprint("━━━ (1) Frame selection mode ━━━\n")
     eprint("How comprehensive should frame capture be?\n")
 
-    eprint("  INSANO — Forensic analysis (DEFAULT)")
+    eprint("  INSANO — Forensic analysis")
     eprint("    • 100+ frames per 2-min clip")
     eprint("    • Captures every pixel shift, cursor twitch, tiny adjustment")
     eprint("    • Use when: Debugging UX interactions pixel-by-pixel")
@@ -774,6 +836,8 @@ def prompt_config() -> dict:
         eprint("  Or override per-run: --mode CHOICE --no-report --out PATH\n")
     except Exception as e:
         eprint(f"WARN: could not save config: {e}\n")
+    print_quickstart(sys.stderr)
+    eprint("")
     return cfg
 
 
@@ -862,26 +926,44 @@ def run_doctor():
     print("qa-digest dependency check")
     print("  interpreter : %s" % sys.executable)
     ok = True
+    limited = []
     for tool in ("ffmpeg", "ffprobe"):
         path = shutil.which(tool)
         print("  %-11s : %s" % (tool, path or "MISSING (brew install ffmpeg)"))
         ok = ok and bool(path)
-    for mod, why in (("faster_whisper", "no transcript without it"),
-                     ("PIL", "diff selection + pointer need it"),
-                     ("numpy", "diff selection + pointer need it"),
-                     ("scenedetect", "optional; interval sampling without it")):
+    # (module, why it matters, required?, what you lose without it)
+    for mod, why, required, loss in (
+            ("faster_whisper", "optional; no transcript without it", False,
+             "no transcript — pip install faster-whisper"),
+            ("PIL", "diff selection + pointer need it", True, ""),
+            ("numpy", "diff selection + pointer need it", True, ""),
+            ("scenedetect", "optional; interval sampling without it", False, "")):
         try:
             __import__(mod)
             print("  %-11s : ok" % mod)
         except ImportError:
             print("  %-11s : MISSING (%s)" % (mod, why))
-            if mod != "scenedetect":
+            if required:
                 ok = False
+            elif loss:
+                limited.append(loss)
     cfg_path = config_path()
     print("  config      : %s%s" % (cfg_path,
           "" if os.path.isfile(cfg_path) else " (not created yet)"))
-    print("  verdict     : %s" % ("ready" if ok else "NOT ready — fix the MISSING lines"))
+    print("  verdict     : %s" % doctor_verdict(ok, limited))
+    if ok:
+        print("")
+        print_quickstart()
     return 0 if ok else 1
+
+
+def doctor_verdict(ok: bool, limited: list) -> str:
+    """Required deps decide ready/not ready; optional ones only add a caveat."""
+    if not ok:
+        return "NOT ready — fix the MISSING lines"
+    if limited:
+        return "ready (limited: %s)" % "; ".join(limited)
+    return "ready"
 
 
 def main():
@@ -889,6 +971,8 @@ def main():
     ap.add_argument("video", nargs="?", help="Path to the local video file")
     ap.add_argument("--check", action="store_true",
                     help="Check dependencies and exit (no video needed)")
+    ap.add_argument("--usage", action="store_true",
+                    help="Print the plain-language how-to-use guide and exit")
     ap.add_argument("--out", default=None, help="Output dir (default: <video>.digest)")
     ap.add_argument("--model", default=None,
                     help="Whisper size: tiny/base/small/medium/large-v3 "
@@ -918,10 +1002,13 @@ def main():
                     help="Remove qa-digest artifacts from --out before running")
     args = ap.parse_args()
 
+    if args.usage:
+        print_quickstart()
+        sys.exit(0)
     if args.check:
         sys.exit(run_doctor())
     if not args.video:
-        ap.error("video is required (or use --check)")
+        ap.error("video is required (or use --check / --usage)")
 
     # Load or initialize config
     cfg = load_or_init_config()
@@ -1125,27 +1212,23 @@ def main():
 
     if manifest["frames"]:
         try:
-            if tr:
-                eprint("[output] digest.md (interleaved)...")
-                outputs["digest"] = digest_interleaved(outdir, tr, manifest["frames"], meta)
+            # Always emit digest.md. With no transcript (silent clip, --no-transcribe,
+            # or faster-whisper missing) every frame lands in "Unmatched Frames".
+            eprint("[output] digest.md (interleaved)...")
+            outputs["digest"] = digest_interleaved(outdir, tr or {"segments": []},
+                                                   manifest["frames"], meta)
             if not args.no_report:
                 eprint("[output] HTML report...")
                 outputs["html"] = emit_html_report(outdir, tr or {"segments": []}, manifest["frames"], meta)
             if manifest.get("scene_source") == "diff":
                 eprint("[output] clicks.json...")
-                clicks = detect_clicks(outdir, manifest["frames"])
-                if clicks:
-                    outputs["clicks"] = clicks
+                outputs["clicks"] = detect_clicks(outdir, manifest["frames"])
         except Exception as e:
             eprint(f"WARN: enhanced output failed: {e}")
 
     if args.json:
         # Output JSON summary
-        json_output = {
-            "output_dir": outdir,
-            "manifest": os.path.join(outdir, "manifest.json"),
-            "outputs": {k: v for k, v in outputs.items() if k != "manifest"}
-        }
+        json_output = build_json_summary(outdir, manifest, outputs)
         print(json.dumps(json_output, indent=2))
     else:
         # Human-readable output
