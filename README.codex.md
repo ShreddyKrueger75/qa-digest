@@ -9,6 +9,19 @@ The skill works with local files. It does not fetch or decode remote video.
 
 ## Install
 
+The quickest way is the installer. It copies the skill, checks dependencies,
+and prints a how-to-use guide at the end:
+
+```bash
+git clone --depth 1 https://github.com/ShreddyKrueger75/qa-digest
+cd qa-digest && ./install.sh --codex
+```
+
+Print the guide again anytime with
+`python3 ~/.codex/skills/qa-digest/scripts/qa_digest.py --usage`.
+
+### Manual install
+
 Install the skill into the Codex skills directory:
 
 ```bash

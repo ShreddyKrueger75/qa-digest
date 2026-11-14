@@ -239,10 +239,11 @@ def test_detect_clicks_includes_last_frame(tmp_path):
     assert clicks[0]["region"] == "center"
 
 
-def test_detect_clicks_none(tmp_path):
+def test_detect_clicks_none_writes_empty_list(tmp_path):
     frames = [_frame(0, 0.0, 50.0, None)]
-    assert dm.detect_clicks(str(tmp_path), frames) is None
-    assert not (tmp_path / "clicks.json").exists()
+    path = dm.detect_clicks(str(tmp_path), frames)
+    assert path == str(tmp_path / "clicks.json")
+    assert json.loads((tmp_path / "clicks.json").read_text()) == []
 
 
 # --- confidence flagging ---------------------------------------------------------
